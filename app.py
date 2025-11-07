@@ -101,6 +101,19 @@ def unclassified_transactions():
     click.echo(f'Found {len(unclassified_transactions)} unclassified transactions.')
 
 
+@cli.command()
+def budget():
+    """Show budget summary."""
+    summary = get_budget_summary()
+    click.echo('Budget Summary:\n')
+    for main_cat, data in summary.items():
+        click.echo(f'Main Category: {main_cat}')
+        click.echo(f'  Total Amount: {data["total_amount"]:.2f}')
+        click.echo('  Sub Categories:')
+        for sub_cat, amount in data['sub_categories'].items():
+            click.echo(f'    {sub_cat}: {amount:.2f}')
+        click.echo('')
+
 if __name__ == '__main__':
     create_tables()
     cli()
