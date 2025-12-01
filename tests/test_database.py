@@ -5,23 +5,25 @@ import database
 
 def setup_module(module):
     # Remove the test database if it exists
-    if os.path.exists('transactions.db'):
-        os.remove('transactions.db')
+    if os.path.exists('mock.db'):
+        os.remove('mock.db')
     database.create_tables()
 
 def teardown_module(module):
-    if os.path.exists('transactions.db'):
-        os.remove('transactions.db')
+    if os.path.exists('mock.db'):
+        try:
+            os.remove('mock.db')
+        except Exception as e:
+            print(f"Error removing mock.db: {e}")
 
 def test_create_tables():
-    database.create_tables()
-    conn = sqlite3.connect('transactions.db')
-    c = conn.cursor()
-    c.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    tables = [row[0] for row in c.fetchall()]
-    assert 'transactions' in tables
-    assert 'issuer_classifications' in tables
-    conn.close()
+    database.create_tables('mock.db')
+    with sqlite3.connect('mock.db') as conn:
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in c.fetchall()]
+        assert 'transactions' in tables
+        assert 'issuer_classifications' in tables
 
 def test_insert_and_get_transaction():
     t = Transaction(
@@ -32,10 +34,10 @@ def test_insert_and_get_transaction():
         main_category='TestMain',
         sub_category='TestSub'
     )
-    database.insert_transaction(t)
-    transactions = database.get_transactions()
+    database.insert_transaction('mock.db', t)
+    transactions = database.get_transactions('mock.db')
     assert any(tr.issuer == 'TestIssuer' for tr in transactions)
-    tr = database.get_transaction(1)
+    tr = database.get_transaction('mock.db', 1)
     assert tr is not None
     assert tr.issuer == 'TestIssuer'
     assert tr.amount == 123.45
@@ -49,10 +51,10 @@ def test_classify_issuer_and_get_issuer_classification():
         main_category='MainCat',
         sub_category='SubCat'
     )
-    database.classify_issuer(ic)
-    main_cat, sub_cat = database.get_issuer_classification('TestIssuer')
+    database.classify_issuer('mock.db', ic)
+    main_cat, sub_cat = database.get_issuer_classification('mock.db', 'TestIssuer')
     assert main_cat == 'MainCat'
     assert sub_cat == 'SubCat'
-    main_cat_none, sub_cat_none = database.get_issuer_classification('UnknownIssuer')
+    main_cat_none, sub_cat_none = database.get_issuer_classification('mock.db', 'UnknownIssuer')
     assert main_cat_none is None
     assert sub_cat_none is None

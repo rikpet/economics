@@ -20,7 +20,7 @@ def parse_seb_transactions(file_path: str) -> list[Transaction]:
                 Transaction(
                     date=str(row.get('Valutadatum')),
                     issuer=str(row.get('Text')).strip(),
-                    amount=float(row.get('Belopp').replace(',', '.')),  # type: ignore
+                    amount=float(str(row.get('Belopp')).replace(',', '.')),
                     origin="SEB"
                 )
             )
@@ -49,6 +49,34 @@ def parse_remember_transactions(file_path: str) -> list[Transaction]:
                     issuer=issuer,
                     amount=amount,
                     origin=origin
+                )
+            )
+
+    return transactions
+
+
+def parse_original_transactions(file_path: str) -> list[Transaction]:
+    """
+    Reads transactions from a CSV file in the original format and returns a list of Transaction objects.
+
+    Args:
+        file_path (str): Path to the transactions CSV file.
+    """
+    with open(file_path, encoding="utf-8-sig") as f:
+        reader = csv.reader(f, delimiter=';')
+    
+        transactions = []
+
+        for row in reader:
+            amount_str = str(row[3]).replace(",", ".").replace(" kr", "").replace(" ", "").strip()
+            transactions.append(
+                Transaction(
+                    date=str(row[0]),
+                    issuer=str(row[1]).strip(),
+                    origin=str(row[2]),
+                    amount=float(amount_str),
+                    main_category=str(row[4]),
+                    sub_category=str(row[5])   
                 )
             )
 

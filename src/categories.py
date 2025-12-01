@@ -1,18 +1,4 @@
-
-MAIN_CATEGORY = [
-    "inkomst",
-    "hushåll",
-    "transport",
-    "försäkring",
-    "nöje",
-    "kläder",
-    "mat",
-    "lån",
-    "övrigt",
-    "sparande",
-]
-
-SUB_CATEGORY = {
+CATEGORIES = {
     "inkomst": [
         "månadspeng",
         "ränta",
@@ -74,4 +60,12 @@ SUB_CATEGORY = {
     "sparande": [
         "övrigt"
     ],
+
+    "bokföring": [
+        "inkomst",
+        "familjeutlägg",
+        "internöverföring",
+        "utlägg/skuld",
+        "familjekonto"
+    ]
 }
