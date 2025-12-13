@@ -1,5 +1,5 @@
 import csv
-from app_types import Transaction
+from app_types import IssuerClassification, Transaction
 import pandas as pd
 
 
@@ -81,3 +81,27 @@ def parse_original_transactions(file_path: str) -> list[Transaction]:
             )
 
     return transactions
+
+
+def parse_original_issuers(file_path: str) -> list[IssuerClassification]:
+    """
+    Reads issuer classifications from a CSV file in the original format and returns a dictionary mapping issuers to their classifications.
+
+    Args:
+        file_path (str): Path to the issuers CSV file.
+    """
+    with open(file_path, encoding="utf-8-sig") as f:
+        reader = csv.reader(f, delimiter=';')
+    
+        issuer_classifications = []
+
+        for row in reader:
+            issuer_classifications.append(
+                IssuerClassification(
+                    issuer=str(row[0]).strip(),
+                    main_category=str(row[1]).strip(),
+                    sub_category=str(row[2]).strip()   
+                )
+            )
+
+    return issuer_classifications

@@ -6,7 +6,8 @@ dependencies = [
     "pandas",
     "xlrd",
     "click",
-    "tabulate"
+    "tabulate",
+    "questionary"
 ]
 readme = {file = "README.md", content-type = "text/markdown"}
 

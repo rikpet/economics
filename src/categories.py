@@ -1,5 +1,6 @@
 CATEGORIES = {
-    "inkomst": [
+    "inkomst": 
+    [
         "månadspeng",
         "ränta",
         "övrigt"

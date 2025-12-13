@@ -4,7 +4,16 @@ import sqlite3
 from app_types import IssuerClassification, ReadTransaction, Transaction
 
 
-def create_tables(database_path='transactions.db'):
+def query(database_path, query):
+    with sqlite3.connect(database_path) as conn:
+        c = conn.cursor()
+        c.execute(query)
+        results = c.fetchall()
+        print(results)
+        return results
+
+
+def create_tables(database_path: str):
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS transactions (
@@ -60,17 +69,28 @@ def classify_issuer(database_path, classification: IssuerClassification):
         conn.commit()
 
 
-def get_transactions(database_path, start_date: datetime | None = None, end_date: datetime | None = None) -> list[ReadTransaction]:
+def get_transactions(database_path, start_date: datetime | None = None, end_date: datetime | None = None, main_category: str | None = None, sub_category: str | None = None) -> list[ReadTransaction]:
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
         query = 'SELECT * FROM transactions'
         params = []
+
         if start_date:
             query += ' WHERE date >= ?'
             params.append(start_date.strftime('%Y-%m-%d'))
+        
         if end_date:
             query += ' AND date <= ?'
             params.append(end_date.strftime('%Y-%m-%d'))
+        
+        if main_category:
+            query += ' AND main_category = ?'
+            params.append(main_category)
+
+        if sub_category:
+            query += ' AND sub_category = ?'
+            params.append(sub_category)
+
         c.execute(query, params)
         rows = c.fetchall()
         transactions = []
@@ -135,3 +155,25 @@ def get_issuer_classification(database_path, issuer) -> tuple:
         if row:
             return row[2], row[3] # main_category, sub_category
         return None, None
+    
+
+from typing import List, Tuple
+
+def get_issuer_classifications(database_path: str) -> List[Tuple[str, IssuerClassification]]:
+    with sqlite3.connect(database_path) as conn:
+        c = conn.cursor()
+        c.execute('SELECT * FROM issuer_classifications')
+        rows = c.fetchall()
+        classifications = []
+        for row in rows:
+            classifications.append(
+                (
+                    row[0],
+                    IssuerClassification(
+                        issuer=row[1],
+                        main_category=row[2],
+                        sub_category=row[3]
+                    )
+                )
+            )
+        return classifications
