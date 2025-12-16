@@ -1,5 +1,5 @@
 import click
-from categories import CATEGORIES
+from balance import Balance
 from database import get_issuer_classifications, classify_issuer
 from app_types import IssuerClassification
 from constants import DATABASE_PATH
@@ -28,13 +28,16 @@ def list_issuers():
 def add_issuer():
     """Add a new issuer classification."""
     issuer = click.prompt("Issuer name")
+
+    mock = Balance(2025, 1)
+
     main_category = click.prompt(
         "Main category",
-        type=click.Choice(CATEGORIES.keys(), case_sensitive=False)
+        type=click.Choice(mock.categories(), case_sensitive=False)
     )
     sub_category = click.prompt(
         "Sub category",
-        type=click.Choice(CATEGORIES.get(main_category, []), case_sensitive=False)
+        type=click.Choice(mock.sub_categories(main_category), case_sensitive=False)
     )
     classify_issuer(DATABASE_PATH, IssuerClassification(
         issuer=issuer,

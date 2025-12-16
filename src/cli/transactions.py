@@ -3,9 +3,8 @@ import click
 import questionary
 
 from app_types import IssuerClassification
+from balance import Balance
 from constants import DATABASE_PATH
-
-from categories import CATEGORIES
 
 from database import classify_issuer, get_issuer_classification, get_transactions, get_transactions, get_unclassified_transactions, insert_transaction, update_transaction
 from parser import parse_remember_transactions, parse_seb_transactions
@@ -69,6 +68,8 @@ def classify_transactions():
     """Classify transactions not yet classified."""
     unclassified_transactions = get_unclassified_transactions()
     for trans in unclassified_transactions:
+
+        mock = Balance(2025, 1)
         
         # Check if the issuer can be classified
         if get_issuer_classification(DATABASE_PATH, trans.issuer) != (None, None):
@@ -80,10 +81,10 @@ def classify_transactions():
 
         main_category=questionary.select(
             "Main category for this transaction",
-            choices=list(CATEGORIES.keys())
+            choices=list(mock.categories())
         ).ask()
 
-        sub_categories = CATEGORIES.get(main_category, [])
+        sub_categories = mock.sub_categories(main_category)
         if len(sub_categories) == 1:
             sub_category = sub_categories[0]
         else:
