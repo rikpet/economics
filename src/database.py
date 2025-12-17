@@ -1,6 +1,8 @@
 from datetime import datetime
 import sqlite3
 
+from typing import List, Tuple
+
 from app_types import IssuerClassification, ReadTransaction, Transaction
 
 
@@ -109,8 +111,8 @@ def get_transactions(database_path, start_date: datetime | None = None, end_date
         return transactions
 
 
-def get_unclassified_transactions() -> list[ReadTransaction]:
-    with sqlite3.connect('transactions.db') as conn:
+def get_unclassified_transactions(database_path: str) -> list[ReadTransaction]:
+    with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
         c.execute('SELECT * FROM transactions WHERE main_category IS NULL OR sub_category IS NULL')
         rows = c.fetchall()
@@ -119,7 +121,7 @@ def get_unclassified_transactions() -> list[ReadTransaction]:
             transactions.append(
                 ReadTransaction(
                     id=row[0],
-                    date=datetime.strptime(row[1], '%Y-%m-%d'),
+                    date=row[1],    
                     issuer=row[2],
                     amount=row[3],
                     origin=row[4],
@@ -147,17 +149,33 @@ def get_transaction(database_path, dataid):
         return None
     
 
-def get_issuer_classification(database_path, issuer) -> tuple:
+def get_issuer_classification(database_path, issuer) -> IssuerClassification | None:
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
         c.execute('SELECT * FROM issuer_classifications WHERE issuer = ?', (issuer,))
         row = c.fetchone()
         if row:
-            return row[2], row[3] # main_category, sub_category
-        return None, None
+            return IssuerClassification(
+                issuer=row[1],
+                main_category=row[2],
+                sub_category=row[3]
+            )
+        return None
     
 
-from typing import List, Tuple
+def get_issuer_classification_by_id(database_path, issuer_id: int) -> IssuerClassification | None:
+    with sqlite3.connect(database_path) as conn:
+        c = conn.cursor()
+        c.execute('SELECT * FROM issuer_classifications WHERE id = ?', (issuer_id,))
+        row = c.fetchone()
+        if row:
+            return IssuerClassification(
+                issuer=row[1],
+                main_category=row[2],
+                sub_category=row[3]
+            )
+        return None
+
 
 def get_issuer_classifications(database_path: str) -> List[Tuple[str, IssuerClassification]]:
     with sqlite3.connect(database_path) as conn:
@@ -177,3 +195,20 @@ def get_issuer_classifications(database_path: str) -> List[Tuple[str, IssuerClas
                 )
             )
         return classifications
+
+
+def remove_issuer_classification(database_path: str, issuer_id: int):
+    with sqlite3.connect(database_path) as conn:
+        c = conn.cursor()
+        c.execute('DELETE FROM issuer_classifications WHERE id = ?', (issuer_id,))
+        conn.commit()
+
+
+def modify_issuer_classification(database_path: str, issuer_id: int, main_category: str, sub_category: str):
+    with sqlite3.connect(database_path) as conn:
+        c = conn.cursor()
+        c.execute('''UPDATE issuer_classifications
+                     SET main_category = ?, sub_category = ?
+                     WHERE id = ?''',
+                  (main_category, sub_category, issuer_id))
+        conn.commit()

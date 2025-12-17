@@ -30,7 +30,11 @@ def add_transactions(file_path, origin):
         raise ValueError("Unsupported origin")
     
     for trans in transactions:
-        trans.main_category, trans.sub_category = get_issuer_classification(DATABASE_PATH, trans.issuer)
+        issuer = get_issuer_classification(DATABASE_PATH, trans.issuer)
+        
+        trans.main_category = issuer.main_category if issuer is not None else None
+        trans.sub_category = issuer.sub_category if issuer is not None else None
+
         insert_transaction(DATABASE_PATH, trans)
 
 
@@ -59,21 +63,22 @@ def list_transactions(start_date, end_date, month):
     click.echo('-' * (5 + 3 + max_issuer_length + 3 + 10 + 3 + 3 + 10 + 3 + 15 + 3 + 15))
     
     for trans in transactions:
-        click.echo(f'{trans.id:<5} | {trans.issuer:<{max_issuer_length + 3}} | {trans.amount:>10.2f} | {trans.date:<10} | {trans.main_category:<15} | {trans.sub_category:<15}')
+        click.echo(f'{trans.id:<5} | {trans.issuer:<{max_issuer_length + 3}} | {trans.amount:>10.2f} | {trans.date:<10} | {trans.main_category if trans.main_category is not None else "":<15} | {trans.sub_category if trans.sub_category is not None else "":<15}')
 
 
 
 @click.command(name='classify')
 def classify_transactions():
     """Classify transactions not yet classified."""
-    unclassified_transactions = get_unclassified_transactions()
+    unclassified_transactions = get_unclassified_transactions(DATABASE_PATH)
     for trans in unclassified_transactions:
 
         mock = Balance(2025, 1)
         
         # Check if the issuer can be classified
-        if get_issuer_classification(DATABASE_PATH, trans.issuer) != (None, None):
-            update_transaction(DATABASE_PATH, trans.id, *get_issuer_classification(DATABASE_PATH, trans.issuer))
+        issuer = get_issuer_classification(DATABASE_PATH, trans.issuer)
+        if issuer is not None:
+            update_transaction(DATABASE_PATH, trans.id, issuer.main_category, issuer.sub_category)
             continue
 
         # Prompt user for classification
@@ -81,24 +86,39 @@ def classify_transactions():
 
         main_category=questionary.select(
             "Main category for this transaction",
-            choices=list(mock.categories())
+            choices=["skip"] + list(mock.categories()),
+            use_shortcuts=True,
+
         ).ask()
 
+        if main_category is None:
+            return
+        
+        if main_category == "skip":
+            continue
+            
         sub_categories = mock.sub_categories(main_category)
         if len(sub_categories) == 1:
             sub_category = sub_categories[0]
         else:
             sub_category = questionary.select(
                 "Sub category for this transaction",
-                choices=sub_categories
+                choices=["skip"] + sub_categories,
+                use_shortcuts=True
             ).ask()
+
+            if sub_category is None:
+                return
+            
+            if sub_category == "skip":
+                continue
         
-        store_issuer_classification = questionary.confirm(
+        store_issuer_classification: bool = questionary.confirm(
             "Store this classification for future use?",
             default=False
         ).ask()
 
-        if store_issuer_classification.lower() == 'y':
+        if store_issuer_classification:
             classify_issuer(DATABASE_PATH, IssuerClassification(
                 issuer=trans.issuer,
                 main_category=main_category,

@@ -7,7 +7,7 @@ from parser import parse_original_issuers, parse_original_transactions
 from database import *
 
 from cli.transactions import add_transactions, list_transactions, classify_transactions
-from cli.issuer import list_issuers, add_issuer
+from cli.issuer import list_issuers, add_issuer, remove_issuer, modify_issuer
 from cli.budget import budget
 
 @click.group()
@@ -34,12 +34,14 @@ def issuer():
 
 issuer.add_command(list_issuers)
 issuer.add_command(add_issuer)
+issuer.add_command(modify_issuer)
+issuer.add_command(remove_issuer)
 
 
 @cli.command()
 def unclassified_transactions():
     """Check for unclassified transactions."""
-    unclassified_transactions = get_unclassified_transactions()
+    unclassified_transactions = get_unclassified_transactions(DATABASE_PATH)
     if len(unclassified_transactions) == 0:
         click.echo('No unclassified transactions found.')
         return
