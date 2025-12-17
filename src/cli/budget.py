@@ -14,7 +14,6 @@ from database import get_transactions
 @click.option('--year', type=int, default=datetime.now().year, help="Year for the budget summary.")
 def budget(show_sub_category, year):
     """Show budget summary."""
-    show_sub_category = True
 
     monthly_balances: dict[int, Balance] = {}
     for month in range(1, 13):

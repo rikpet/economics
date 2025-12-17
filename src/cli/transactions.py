@@ -42,7 +42,9 @@ def add_transactions(file_path, origin):
 @click.option('--start-date', type=click.DateTime(formats=["%Y-%m-%d"]), default=None, help="Start date (YYYY-MM-DD)")
 @click.option('--end-date', type=click.DateTime(formats=["%Y-%m-%d"]), default=None, help="End date (YYYY-MM-DD)")
 @click.option('--month', type=int, default=None, help="Month (1-12)")
-def list_transactions(start_date, end_date, month):
+@click.option('--category', type=str, default=None, help="Filter by main category")
+@click.option('--sub-category', type=str, default=None, help="Filter by sub-category")
+def list_transactions(start_date, end_date, month, category, sub_category):
     """List all transactions in the database, optionally filtered by date range."""
         
     if month:
@@ -50,7 +52,7 @@ def list_transactions(start_date, end_date, month):
         start_date = datetime(year, month, 1)
         end_date = datetime(year, month + 1, 1) - timedelta(days=1)
 
-    transactions = get_transactions(DATABASE_PATH,start_date=start_date, end_date=end_date)
+    transactions = get_transactions(DATABASE_PATH,start_date=start_date, end_date=end_date, main_category=category, sub_category=sub_category)
 
     if len(transactions) == 0:
         click.echo('No transactions found.')
@@ -126,4 +128,14 @@ def classify_transactions():
             ))
 
         update_transaction(DATABASE_PATH, trans.id, main_category, sub_category)
+
+
+@click.command(name='unclassified')
+def unclassified_transactions():
+    """Check for unclassified transactions."""
+    unclassified_transactions = get_unclassified_transactions(DATABASE_PATH)
+    if len(unclassified_transactions) == 0:
+        click.echo('No unclassified transactions found.')
+        return
+    click.echo(f'Found {len(unclassified_transactions)} unclassified transactions.')
 
