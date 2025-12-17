@@ -86,7 +86,7 @@ def classify_transactions():
 
         main_category=questionary.select(
             "Main category for this transaction",
-            choices=["skip"] + list(mock.categories()),
+            choices=["SKIP"] + list(mock.categories()),
             use_shortcuts=True,
 
         ).ask()
@@ -94,7 +94,7 @@ def classify_transactions():
         if main_category is None:
             return
         
-        if main_category == "skip":
+        if main_category == "SKIP":
             continue
             
         sub_categories = mock.sub_categories(main_category)
@@ -103,14 +103,14 @@ def classify_transactions():
         else:
             sub_category = questionary.select(
                 "Sub category for this transaction",
-                choices=["skip"] + sub_categories,
+                choices=["SKIP"] + sub_categories,
                 use_shortcuts=True
             ).ask()
 
             if sub_category is None:
                 return
             
-            if sub_category == "skip":
+            if sub_category == "SKIP":
                 continue
         
         store_issuer_classification: bool = questionary.confirm(
