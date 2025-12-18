@@ -6,7 +6,7 @@ from app_types import IssuerClassification
 from balance import Balance
 from constants import DATABASE_PATH
 
-from database import classify_issuer, get_issuer_classification, get_transactions, get_transactions, get_unclassified_transactions, insert_transaction, update_transaction
+import database as db
 from parser import parse_remember_transactions, parse_seb_transactions
 
 
@@ -30,12 +30,12 @@ def add_transactions(file_path, origin):
         raise ValueError("Unsupported origin")
     
     for trans in transactions:
-        issuer = get_issuer_classification(DATABASE_PATH, trans.issuer)
+        issuer = db.get_issuer_classification(DATABASE_PATH, trans.issuer)
         
         trans.main_category = issuer.main_category if issuer is not None else None
         trans.sub_category = issuer.sub_category if issuer is not None else None
 
-        insert_transaction(DATABASE_PATH, trans)
+        db.insert_transaction(DATABASE_PATH, trans)
 
 
 @click.command(name='list')
@@ -52,7 +52,7 @@ def list_transactions(start_date, end_date, month, category, sub_category):
         start_date = datetime(year, month, 1)
         end_date = datetime(year, month + 1, 1) - timedelta(days=1)
 
-    transactions = get_transactions(DATABASE_PATH,start_date=start_date, end_date=end_date, main_category=category, sub_category=sub_category)
+    transactions = db.get_transactions(DATABASE_PATH,start_date=start_date, end_date=end_date, main_category=category, sub_category=sub_category)
 
     if len(transactions) == 0:
         click.echo('No transactions found.')
@@ -72,15 +72,15 @@ def list_transactions(start_date, end_date, month, category, sub_category):
 @click.command(name='classify')
 def classify_transactions():
     """Classify transactions not yet classified."""
-    unclassified_transactions = get_unclassified_transactions(DATABASE_PATH)
+    unclassified_transactions = db.get_unclassified_transactions(DATABASE_PATH)
     for trans in unclassified_transactions:
 
         mock = Balance(2025, 1)
         
         # Check if the issuer can be classified
-        issuer = get_issuer_classification(DATABASE_PATH, trans.issuer)
+        issuer = db.get_issuer_classification(DATABASE_PATH, trans.issuer)
         if issuer is not None:
-            update_transaction(DATABASE_PATH, trans.id, issuer.main_category, issuer.sub_category)
+            db.update_transaction(DATABASE_PATH, trans.id, issuer.main_category, issuer.sub_category)
             continue
 
         # Prompt user for classification
@@ -121,19 +121,19 @@ def classify_transactions():
         ).ask()
 
         if store_issuer_classification:
-            classify_issuer(DATABASE_PATH, IssuerClassification(
+            db.classify_issuer(DATABASE_PATH, IssuerClassification(
                 issuer=trans.issuer,
                 main_category=main_category,
                 sub_category=sub_category
             ))
 
-        update_transaction(DATABASE_PATH, trans.id, main_category, sub_category)
+        db.update_transaction(DATABASE_PATH, trans.id, main_category, sub_category)
 
 
 @click.command(name='unclassified')
 def unclassified_transactions():
     """Check for unclassified transactions."""
-    unclassified_transactions = get_unclassified_transactions(DATABASE_PATH)
+    unclassified_transactions = db.get_unclassified_transactions(DATABASE_PATH)
     if len(unclassified_transactions) == 0:
         click.echo('No unclassified transactions found.')
         return

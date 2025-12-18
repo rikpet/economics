@@ -1,6 +1,3 @@
-from datetime import datetime
-import pytest
-
 from app_types import Transaction
 from parser import parse_remember_transactions, parse_seb_transactions
 

@@ -2,7 +2,6 @@ import calendar
 from datetime import datetime
 import click
 from tabulate import tabulate
-from dataclasses import dataclass
 
 from app_types import ReadTransaction
 from balance import Balance
