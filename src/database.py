@@ -50,13 +50,29 @@ def insert_transaction(database_path: str, transaction: Transaction):
         conn.commit()
 
 
-def update_transaction(database_path: str, transaction_id: int, main_category: str, sub_category: str):
+def update_transaction(database_path: str, transaction_id: int, main_category: str | None = None, sub_category: str | None = None, date: datetime | None  = None):
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
-        c.execute('''UPDATE transactions
-                     SET main_category = ?, sub_category = ?
-                     WHERE id = ?''',
-                  (main_category, sub_category, transaction_id))
+        query = 'UPDATE transactions SET '
+        params = []
+
+        if main_category is not None:
+            query += 'main_category = ?, '
+            params.append(main_category)
+
+        if sub_category is not None:
+            query += 'sub_category = ?, '
+            params.append(sub_category)
+
+        if date is not None:
+            query += 'date = ?, '
+            params.append(date.strftime('%Y-%m-%d'))
+
+        query = query.rstrip(', ')  # Remove trailing comma and space
+        query += ' WHERE id = ?'
+        params.append(transaction_id)
+
+        c.execute(query, params)
         conn.commit()
 
 

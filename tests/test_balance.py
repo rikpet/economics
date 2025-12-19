@@ -1,6 +1,6 @@
 
 
-from app_types import ReadTransaction
+from src.app_types import ReadTransaction
 from balance import Balance
 
 

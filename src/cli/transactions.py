@@ -68,6 +68,15 @@ def list_transactions(start_date, end_date, month, category, sub_category):
         click.echo(f'{trans.id:<5} | {trans.issuer:<{max_issuer_length + 3}} | {trans.amount:>10.2f} | {trans.date:<10} | {trans.main_category if trans.main_category is not None else "":<15} | {trans.sub_category if trans.sub_category is not None else "":<15}')
 
 
+@click.command(name='modify')
+@click.argument('transaction_id', type=int)
+@click.option('--main-category', type=str, default=None, help="New main category")
+@click.option('--sub-category', type=str, default=None, help="New sub-category")
+@click.option('--date', type=click.DateTime(formats=["%Y-%m-%d"]), default=None, help="New date (YYYY-MM-DD)")
+def modify_transaction(transaction_id, main_category, sub_category, date):
+    """Modify an existing transaction."""
+    db.update_transaction(DATABASE_PATH, transaction_id, main_category, sub_category, date)
+
 
 @click.command(name='classify')
 def classify_transactions():

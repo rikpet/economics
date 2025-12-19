@@ -1,6 +1,6 @@
 import sqlite3
 import os
-from app_types import IssuerClassification, Transaction
+from src.app_types import IssuerClassification, Transaction
 import database
 
 MOCK_DB_PATH = 'mock.db'

@@ -3,11 +3,27 @@ import click
 
 from constants import DATABASE_PATH
 
-from parser import parse_original_issuers, parse_original_transactions
+from parser import (
+    parse_original_issuers, 
+    parse_original_transactions
+)
 from database import *
 
-from cli.transactions import add_transactions, list_transactions, classify_transactions, unclassified_transactions
-from cli.issuer import list_issuers, add_issuer, remove_issuer, modify_issuer
+from cli.transactions import (
+    add_transactions,
+    list_transactions,
+    modify_transaction,
+    classify_transactions,
+    unclassified_transactions
+)
+
+from cli.issuer import (
+    list_issuers,
+    add_issuer,
+    remove_issuer,
+    modify_issuer
+)
+
 from cli.budget import budget
 
 @click.group()
@@ -24,6 +40,7 @@ def trans():
 
 trans.add_command(add_transactions)
 trans.add_command(list_transactions)
+trans.add_command(modify_transaction)
 trans.add_command(classify_transactions)
 trans.add_command(unclassified_transactions)
 
