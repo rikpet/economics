@@ -11,7 +11,7 @@ dependencies = [
 ]
 readme = {file = "README.md", content-type = "text/markdown"}
 
-[dependency-groups]
+[project.optional-dependencies]
 test = [
     "pytest"
 ]

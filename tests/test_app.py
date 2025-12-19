@@ -1,4 +1,4 @@
-from src.app_types import Transaction
+from app_types import Transaction
 from parser import parse_remember_transactions, parse_seb_transactions
 
 def test_read_seb_transactions():
