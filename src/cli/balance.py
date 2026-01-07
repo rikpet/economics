@@ -3,19 +3,26 @@ from datetime import datetime
 import click
 from tabulate import tabulate
 
-from app_types import ReadTransaction
 from balance import Balance
 from constants import DATABASE_PATH
 from database import get_transactions
+from utils import month_no_to_name, month_to_date
 
 @click.command()
 @click.option('--show-sub-category', is_flag=True, help='Show sub-category breakdown.')
 @click.option('--year', type=int, default=datetime.now().year, help="Year for the budget summary.")
-def budget(show_sub_category, year):
+@click.option('--month', type=int, default=None, help="Month for the budget summary.")
+@click.option('--category', type=str, default=None, help="Category for the budget summary.")
+def balance(show_sub_category, year, month, category):
     """Show budget summary."""
 
     monthly_balances: dict[int, Balance] = {}
-    for month in range(1, 13):
+    if month is None:
+        months_range = range(1, 13)
+    else:
+        months_range = [month]
+
+    for month in months_range:
         monthly_balances[month] = Balance(year, month)
         monthly_balances[month].add_several(
             get_transactions(
@@ -32,18 +39,23 @@ def budget(show_sub_category, year):
         "bokföring",
         "familjeutlägg"
     )
-    monthly_balances[1].set_dept(sum(t.amount for t in dept_transactions))
-    for month in range(2, 13):
+    monthly_balances[months_range[0]].set_dept(sum(t.amount for t in dept_transactions))
+    for month in months_range[1:]:
         monthly_balances[month].set_dept(monthly_balances[month - 1].get_sub_category("bokföring", "familjeutlägg"))
 
-    months: list[str] = [str(calendar.month_name[m]) for m in monthly_balances.keys()]
-
+    months: list[str] = [month_no_to_name(m) for m in monthly_balances.keys()]
+    
     table_data: list[list[str]] = []
-    cat = monthly_balances[1].categories()
+
+    if category:
+          cat = [category]
+    else:
+          cat = monthly_balances[months_range[0]].categories()
+
     for c in cat:
         table_data.append([c.capitalize()])
         if show_sub_category:
-            for sc in monthly_balances[1].sub_categories(c):
+            for sc in monthly_balances[months_range[0]].sub_categories(c):
                 table_data.append([f'  - {sc.capitalize()}'])
 
     current_cat = ''
@@ -62,14 +74,14 @@ def budget(show_sub_category, year):
     click.echo(tabulate(table_data, headers=['Category'] + months))
 
 
+@click.command()
+@click.option('--month', type=int, default=datetime.now().month - 1, help="Month for when to accumulated dept.")
+def dept(month):
+    """Show accumulated dept up to a specific month."""
 
-def get_monthly_budget(transactions: list[ReadTransaction]) -> dict[int, Balance]:
-    monthly_balances: dict[int, Balance] = {}
+    start_date, end_date = month_to_date(month)
 
-    year = datetime.now().year
+    trans = get_transactions(DATABASE_PATH, start_date, end_date, "bokföring", "familjeutlägg")
 
-    for month in range(1, 13):
-        monthly_balances[month] = Balance(year, month)
-        monthly_balances[month].add_several([t for t in transactions if datetime.strptime(t.date, '%Y-%m-%d').month == month and datetime.strptime(t.date, '%Y-%m-%d').year == year])
-
-    return monthly_balances
+    total_dept = sum(t.amount for t in trans)
+    click.echo(f'Accumulated dept for {month_no_to_name(month)}: {total_dept}')

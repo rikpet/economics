@@ -6,7 +6,7 @@ from typing import List, Tuple
 from app_types import IssuerClassification, ReadTransaction, Transaction
 
 
-def query(database_path, query):
+def query(database_path: str, query: str) -> List[Tuple]:
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
         c.execute(query)
@@ -87,7 +87,7 @@ def classify_issuer(database_path, classification: IssuerClassification):
         conn.commit()
 
 
-def get_transactions(database_path, start_date: datetime | None = None, end_date: datetime | None = None, main_category: str | None = None, sub_category: str | None = None) -> list[ReadTransaction]:
+def get_transactions(database_path: str, start_date: datetime | None = None, end_date: datetime | None = None, main_category: str | None = None, sub_category: str | None = None) -> list[ReadTransaction]:
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
         query = 'SELECT * FROM transactions'

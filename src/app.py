@@ -1,13 +1,9 @@
 import os
 import click
 
+
 from constants import DATABASE_PATH
 
-from parser import (
-    parse_original_issuers, 
-    parse_original_transactions
-)
-from database import *
 
 from cli.transactions import (
     add_transactions,
@@ -24,13 +20,21 @@ from cli.issuer import (
     modify_issuer
 )
 
-from cli.budget import budget
+from cli.balance import balance, dept
+
+from cli.advanced import (
+    add_original_issuers,
+    add_original_transactions,
+    query_db
+)
+from database import create_tables
 
 @click.group()
 def cli():
     pass
 
-cli.add_command(budget)
+cli.add_command(balance)
+cli.add_command(dept)
 
 
 @cli.group()
@@ -55,57 +59,17 @@ issuer.add_command(add_issuer)
 issuer.add_command(modify_issuer)
 issuer.add_command(remove_issuer)
 
-
-
-# -------------------------------------------------------------------
-# Advanced COMMAND GROUP
-# -------------------------------------------------------------------
-
 @cli.group()
 def advanced():
     """Advanced database commands."""
     pass
 
-@advanced.command(name='query')
-@click.argument('query_string')
-def query_db(query_string):
-    results = query(DATABASE_PATH, query_string)
-    for row in results:
-        click.echo(row)
-
-@cli.command()
-@click.argument('file_path')
-def add_original_transactions(file_path):
-    """Adds original transactions to database
-    
-    Args:
-        file_path (str): Path to the original transactions file.
-    """
-    click.echo(f'Processing file: {file_path}')
-    transactions = parse_original_transactions(file_path)
-    
-    for trans in transactions:
-        insert_transaction(DATABASE_PATH, trans)
-
-@advanced.command()
-@click.argument('file_path')
-def add_original_issuers(file_path):
-    """Adds original issuer classifications to database
-    
-    Args:
-        file_path (str): Path to the original issuers file.
-    """
-    click.echo(f'Processing issuers file: {file_path}')
-    issuers = parse_original_issuers(file_path)
-    
-    for issuer in issuers:
-        classify_issuer(DATABASE_PATH, issuer)
+advanced.add_command(query_db)
+advanced.add_command(add_original_transactions)
+advanced.add_command(add_original_issuers)
 
 
 def main():
     if not os.path.exists(DATABASE_PATH):
         create_tables(DATABASE_PATH)
     cli()
-
-if __name__ == '__main__':
-    budget()

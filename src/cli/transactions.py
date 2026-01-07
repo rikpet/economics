@@ -114,16 +114,13 @@ def classify_transactions():
         else:
             sub_category = questionary.select(
                 "Sub category for this transaction",
-                choices=["SKIP"] + sub_categories,
+                choices=sub_categories,
                 use_shortcuts=True
             ).ask()
 
             if sub_category is None:
                 return
-            
-            if sub_category == "SKIP":
-                continue
-        
+
         store_issuer_classification: bool = questionary.confirm(
             "Store this classification for future use?",
             default=False
