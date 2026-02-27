@@ -5,6 +5,7 @@ import questionary
 from app_types import IssuerClassification
 from balance import Balance
 from constants import DATABASE_PATH
+import calendar
 
 import database as db
 from parser import parse_remember_transactions, parse_seb_transactions
@@ -37,22 +38,25 @@ def add_transactions(file_path, origin):
 
         db.insert_transaction(DATABASE_PATH, trans)
 
-
+#TODO: add check on category and sub-category
 @click.command(name='list')
 @click.option('--start-date', type=click.DateTime(formats=["%Y-%m-%d"]), default=None, help="Start date (YYYY-MM-DD)")
 @click.option('--end-date', type=click.DateTime(formats=["%Y-%m-%d"]), default=None, help="End date (YYYY-MM-DD)")
 @click.option('--month', type=int, default=None, help="Month (1-12)")
-@click.option('--category', type=str, default=None, help="Filter by main category")
-@click.option('--sub-category', type=str, default=None, help="Filter by sub-category")
-def list_transactions(start_date, end_date, month, category, sub_category):
+@click.option('--year', type=int, default=None, help="Year (e.g., 2023)")
+@click.option('--category', type=str, default=None, multiple=True, help="Filter by main category")
+@click.option('--sub-category', type=str, default=None, multiple=True, help="Filter by sub-category")
+@click.option('--sum', 'show_sum', is_flag=True, help="Show sum of transaction amounts")
+def list_transactions(start_date, end_date, month, year, category: tuple[str], sub_category: tuple[str], show_sum: bool):
     """List all transactions in the database, optionally filtered by date range."""
         
+    year = datetime.now().year if year is None else year
     if month:
-        year = datetime.now().year
         start_date = datetime(year, month, 1)
-        end_date = datetime(year, month + 1, 1) - timedelta(days=1)
+        days_in_month = calendar.monthrange(year, month)[1]
+        end_date = start_date + timedelta(days=days_in_month - 1)
 
-    transactions = db.get_transactions(DATABASE_PATH,start_date=start_date, end_date=end_date, main_category=category, sub_category=sub_category)
+    transactions = db.get_transactions(DATABASE_PATH,start_date=start_date, end_date=end_date, main_category=list(category), sub_category=list(sub_category))
 
     if len(transactions) == 0:
         click.echo('No transactions found.')
@@ -67,6 +71,9 @@ def list_transactions(start_date, end_date, month, category, sub_category):
     for trans in transactions:
         click.echo(f'{trans.id:<5} | {trans.issuer:<{max_issuer_length + 3}} | {trans.amount:>10.2f} | {trans.date:<10} | {trans.main_category if trans.main_category is not None else "":<15} | {trans.sub_category if trans.sub_category is not None else "":<15}')
 
+    if show_sum:
+        total_amount = sum(t.amount for t in transactions)
+        click.echo(f'\nTotal amount: {total_amount:.2f}')
 
 @click.command(name='modify')
 @click.argument('transaction_id', type=int)
@@ -75,6 +82,9 @@ def list_transactions(start_date, end_date, month, category, sub_category):
 @click.option('--date', type=click.DateTime(formats=["%Y-%m-%d"]), default=None, help="New date (YYYY-MM-DD)")
 def modify_transaction(transaction_id, main_category, sub_category, date):
     """Modify an existing transaction."""
+    if main_category is None and sub_category is None and date is None:
+        click.echo('No modifications specified. Use --main-category, --sub-category, or --date to specify modifications.')
+        return
     db.update_transaction(DATABASE_PATH, transaction_id, main_category, sub_category, date)
 
 

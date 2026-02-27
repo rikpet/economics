@@ -87,27 +87,34 @@ def classify_issuer(database_path, classification: IssuerClassification):
         conn.commit()
 
 
-def get_transactions(database_path: str, start_date: datetime | None = None, end_date: datetime | None = None, main_category: str | None = None, sub_category: str | None = None) -> list[ReadTransaction]:
+def get_transactions(database_path: str, start_date: datetime | None = None, end_date: datetime | None = None, main_category: list[str] | None = None, sub_category: list[str] | None = None) -> list[ReadTransaction]:
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
         query = 'SELECT * FROM transactions'
         params = []
 
+        conditions = []
+
         if start_date:
-            query += ' WHERE date >= ?'
+            conditions.append('date >= ?')
             params.append(start_date.strftime('%Y-%m-%d'))
         
         if end_date:
-            query += ' AND date <= ?'
+            conditions.append('date <= ?')
             params.append(end_date.strftime('%Y-%m-%d'))
         
         if main_category:
-            query += ' AND main_category = ?'
-            params.append(main_category)
+            placeholders = ', '.join(['?'] * len(main_category))
+            conditions.append(f"main_category IN ({placeholders})")
+            params.extend(main_category)
 
         if sub_category:
-            query += ' AND sub_category = ?'
-            params.append(sub_category)
+            placeholders = ', '.join(['?'] * len(sub_category))
+            conditions.append(f"sub_category IN ({placeholders})")
+            params.extend(sub_category)
+
+        if len(conditions) > 0:
+            query += ' WHERE ' + ' AND '.join(conditions)
 
         c.execute(query, params)
         rows = c.fetchall()

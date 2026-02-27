@@ -1,8 +1,31 @@
 from datetime import datetime, timedelta
 import calendar
 
-def month_to_date(month: int = datetime.now().month, year: int = datetime.now().year) -> (tuple[datetime, datetime]):
+def month_to_date(month: int | None = None, year: int | None = None) -> (tuple[datetime, datetime]):
     """Get start and end date for a given month and year."""
+
+    if year is None and month is None:  # Both year and month are None, use previous month of current year
+        year = datetime.now().year
+        month = datetime.now().month - 1
+        if month == 0:
+            month = 12
+            year -= 1
+
+    elif month is None and year is not None:  # Only month is None, use previous month of given year
+        raise ValueError("Month must be provided if year is provided.")
+
+    elif month is not None and year is None:  # Only year is None, use current year
+        if month > datetime.now().month:
+            year = datetime.now().year - 1
+        else:
+            year = datetime.now().year
+
+    else:  # Both month and year are provided
+        pass
+
+    if year is None or month is None:
+        # This is more for type checking purposes; the above logic should ensure both are set
+        raise ValueError("Year and month must be determined.")
 
     start_date = datetime.strptime(f'{year}-{month:02d}-01', '%Y-%m-%d')
     if month == 12:

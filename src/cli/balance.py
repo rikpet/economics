@@ -12,8 +12,8 @@ from utils import month_no_to_name, month_to_date
 @click.option('--show-sub-category', is_flag=True, help='Show sub-category breakdown.')
 @click.option('--year', type=int, default=datetime.now().year, help="Year for the budget summary.")
 @click.option('--month', type=int, default=None, help="Month for the budget summary.")
-@click.option('--category', type=str, default=None, help="Category for the budget summary.")
-def balance(show_sub_category, year, month, category):
+@click.option('--category', default=None, multiple=True, help="Category for the budget summary.")
+def balance(show_sub_category, year, month, category: tuple[str]):
     """Show budget summary."""
 
     monthly_balances: dict[int, Balance] = {}
@@ -48,7 +48,7 @@ def balance(show_sub_category, year, month, category):
     table_data: list[list[str]] = []
 
     if category:
-          cat = [category]
+          cat = list(category)
     else:
           cat = monthly_balances[months_range[0]].categories()
 
