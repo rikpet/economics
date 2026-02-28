@@ -11,7 +11,7 @@ def month_to_date(month: int | None = None, year: int | None = None) -> (tuple[d
             month = 12
             year -= 1
 
-    elif month is None and year is not None:  # Only month is None, use previous month of given year
+    elif month is None and year is not None:  # Only month is None, not acceptable since we need month to determine date range
         raise ValueError("Month must be provided if year is provided.")
 
     elif month is not None and year is None:  # Only year is None, use current year

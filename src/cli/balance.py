@@ -36,8 +36,8 @@ def balance(show_sub_category, year, month, category: tuple[str]):
         DATABASE_PATH,
         datetime.strptime(f'{year - 1}-12-01', '%Y-%m-%d'),
         datetime.strptime(f'{year - 1}-12-31', '%Y-%m-%d'),
-        "bokföring",
-        "familjeutlägg"
+        ["bokföring"],
+        ["familjeutlägg"]
     )
     monthly_balances[months_range[0]].set_dept(sum(t.amount for t in dept_transactions))
     for month in months_range[1:]:
@@ -81,7 +81,7 @@ def dept(month):
 
     start_date, end_date = month_to_date(month)
 
-    trans = get_transactions(DATABASE_PATH, start_date, end_date, "bokföring", "familjeutlägg")
+    trans = get_transactions(DATABASE_PATH, start_date, end_date, ["bokföring"], ["familjeutlägg"])
 
     total_dept = sum(t.amount for t in trans)
     click.echo(f'Accumulated dept for {month_no_to_name(month)}: {total_dept}')

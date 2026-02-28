@@ -7,10 +7,12 @@ from src.utils import month_to_date, month_no_to_name
     [
         (1, 2023, (datetime(2023, 1, 1), datetime(2023, 1, 31))),
         (2, 2024, (datetime(2024, 2, 1), datetime(2024, 2, 29))),  # Leap year
+        (2, 2023, (datetime(2023, 2, 1), datetime(2023, 2, 28))),
         (3, 2023, (datetime(2023, 3, 1), datetime(2023, 3, 31))),
         (12, 2025, (datetime(2025, 12, 1), datetime(2025, 12, 31))),
         (1, 2025, (datetime(2025, 1, 1), datetime(2025, 1, 31))),
-        (None, 202)
+        (None, 2025, (None, None)),  # Should raise ValueError
+        (1, None, (datetime(2026, 1, 1), datetime(2026, 1, 31))), 
     ]
 )
 def test_month_to_date_default(month, year, expected):
