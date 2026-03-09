@@ -1,11 +1,11 @@
 import calendar
 from datetime import datetime
 import click
-from tabulate import tabulate
 
 from balance import Balance
 from constants import DATABASE_PATH
 from database import get_transactions
+from printout import generate_table
 from utils import month_no_to_name, month_to_date
 
 @click.command()
@@ -71,7 +71,10 @@ def balance(show_sub_category, year, month, category: tuple[str]):
                 c.append(str(int(b.get(category_name))))
 
     click.echo('BUDGET SUMMARY:\n')
-    click.echo(tabulate(table_data, headers=['Category'] + months))
+    click.echo(generate_table(
+        header=['Category'] + months,
+        rows=table_data
+    ))
 
 
 @click.command()

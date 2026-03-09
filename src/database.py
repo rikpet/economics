@@ -1,75 +1,77 @@
 from datetime import datetime
 import sqlite3
-
+import os
 from typing import List, Tuple
 
 from app_types import IssuerClassification, ReadTransaction, Transaction
-
 
 def query(database_path: str, query: str) -> List[Tuple]:
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
         c.execute(query)
         results = c.fetchall()
-        print(results)
         return results
 
 
-def create_tables(database_path: str):
+def run_custom_query(database_path: str):
+    with open('src/queries/new_schema.sql', "r", encoding="utf-8") as f:
+        schema_sql = f.read()
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS transactions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        date TEXT NOT NULL,
-                        issuer TEXT NOT NULL,
-                        amount REAL NOT NULL,
-                        origin TEXT NOT NULL,
-                        main_category TEXT,
-                        sub_category TEXT
-                    )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS issuer_classifications (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        issuer TEXT UNIQUE NOT NULL,
-                        main_category TEXT NOT NULL,
-                        sub_category TEXT NOT NULL
-                    )''')
+        c.executescript(schema_sql)
+        conn.commit()
+
+
+def create_tables(database_path: str):
+    with open('src/queries/db_schema.sql', "r", encoding="utf-8") as f:
+        schema_sql = f.read()
+    with sqlite3.connect(database_path) as conn:
+        c = conn.cursor()
+        c.executescript(schema_sql)
         conn.commit()
 
 
 def insert_transaction(database_path: str, transaction: Transaction):
+    with open('src/queries/insert_transaction.sql', 'r', encoding='utf-8') as f:
+        sql = f.read()
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
-        c.execute('''INSERT INTO transactions (date, issuer, amount, origin, main_category, sub_category)
-                     VALUES (?, ?, ?, ?, ?, ?)''',
+        c.execute(sql,
                   (transaction.date,
                    transaction.issuer,
                    transaction.amount,
                    transaction.origin,
                    transaction.main_category,
-                   transaction.sub_category))
+                   transaction.sub_category, 
+                   transaction.comment))
         conn.commit()
 
 
-def update_transaction(database_path: str, transaction_id: int, main_category: str | None = None, sub_category: str | None = None, date: datetime | None  = None):
-    with sqlite3.connect(database_path) as conn:
+def update_transaction(database_path: str, transaction_id: int, main_category: str | None = None, sub_category: str | None = None, date: datetime | None  = None, comment: str | None = None):
+    with sqlite3.connect(database_path) as conn, open('src/queries/update_transaction.sql', 'r', encoding='utf-8') as f:
         c = conn.cursor()
-        query = 'UPDATE transactions SET '
+        template = f.read()
+        fields = []
         params = []
 
         if main_category is not None:
-            query += 'main_category = ?, '
+            fields.append('main_category = ?')
             params.append(main_category)
 
         if sub_category is not None:
-            query += 'sub_category = ?, '
+            fields.append('sub_category = ?')
             params.append(sub_category)
 
         if date is not None:
-            query += 'date = ?, '
+            fields.append('date = ?')
             params.append(date.strftime('%Y-%m-%d'))
 
-        query = query.rstrip(', ')  # Remove trailing comma and space
-        query += ' WHERE id = ?'
+        if comment is not None:
+            fields.append('comment = ?')
+            params.append(comment)
+
+        fields_str = ', '.join(fields)
+        query = template.replace('{fields}', fields_str)
         params.append(transaction_id)
 
         c.execute(query, params)
@@ -128,7 +130,8 @@ def get_transactions(database_path: str, start_date: datetime | None = None, end
                     amount=row[3],
                     origin=row[4],
                     main_category=row[5],
-                    sub_category=row[6]
+                    sub_category=row[6],
+                    comment=row[7]
                 )
             )
         return transactions
@@ -149,7 +152,8 @@ def get_unclassified_transactions(database_path: str) -> list[ReadTransaction]:
                     amount=row[3],
                     origin=row[4],
                     main_category=row[5],
-                    sub_category=row[6]
+                    sub_category=row[6],
+                    comment=row[7]
                 )
             )
         return transactions
@@ -167,7 +171,8 @@ def get_transaction(database_path, dataid):
                 amount=row[3],
                 origin=row[4],
                 main_category=row[5],
-                sub_category=row[6]
+                sub_category=row[6],
+                comment=row[7]
             )
         return None
     

@@ -34,8 +34,10 @@ def test_insert_and_get_transaction():
         amount=123.45,
         origin='TestOrigin',
         main_category='TestMain',
-        sub_category='TestSub'
+        sub_category='TestSub',
+        comment='TestComment'
     )
+
     database.insert_transaction(MOCK_DB_PATH, t)
     transactions = database.get_transactions(MOCK_DB_PATH)
     assert any(tr.issuer == 'TestIssuer' for tr in transactions)
@@ -46,6 +48,7 @@ def test_insert_and_get_transaction():
     assert tr.origin == 'TestOrigin'
     assert tr.main_category == 'TestMain'
     assert tr.sub_category == 'TestSub'
+    assert tr.comment == 'TestComment'
 
 def test_classify_issuer_and_get_issuer_classification():
     ic = IssuerClassification(

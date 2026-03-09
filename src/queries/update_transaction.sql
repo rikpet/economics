@@ -1,0 +1,1 @@
+UPDATE transactions SET {fields} WHERE id = ?;

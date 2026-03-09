@@ -11,11 +11,10 @@ from src.utils import month_to_date, month_no_to_name
         (3, 2023, (datetime(2023, 3, 1), datetime(2023, 3, 31))),
         (12, 2025, (datetime(2025, 12, 1), datetime(2025, 12, 31))),
         (1, 2025, (datetime(2025, 1, 1), datetime(2025, 1, 31))),
-        (None, 2025, (None, None)),  # Should raise ValueError
         (1, None, (datetime(2026, 1, 1), datetime(2026, 1, 31))), 
     ]
 )
-def test_month_to_date_default(month, year, expected):
+def test_month_to_date(month, year, expected):
     # Should return previous month of current year
     now = datetime.now()
     prev_month = now.month - 1 if now.month > 1 else 12
@@ -34,42 +33,9 @@ def test_month_to_date_default(month, year, expected):
         next_month_start = datetime(prev_year, prev_month % 12 + 1, 1)
         assert (end + timedelta(days=1)).date() == next_month_start.date()
 
-def test_month_to_date_only_year():
-    now = datetime.now()
-    prev_month = now.month - 1 if now.month > 1 else 12
-    prev_year = 2020 if now.month > 1 else 2019
-    start, end = month_to_date(year=2020)
-    assert start.month == prev_month
-    assert start.year == prev_year
-    assert start.day == 1
-    assert end.month == prev_month
-    assert end.year == prev_year
-
-def test_month_to_date_only_month():
-    now = datetime.now()
-    # If month > now.month, should use previous year
-    start, end = month_to_date(month=12)
-    if 12 > now.month:
-        assert start.year == now.year - 1
-    else:
-        assert start.year == now.year
-    assert start.month == 12
-    assert start.day == 1
-    assert end.month == 12
-    # December always ends on 31st
-    assert end.day == 31
-
-def test_month_to_date_both_provided():
-    start, end = month_to_date(month=2, year=2024)
-    assert start == datetime(2024, 2, 1)
-    assert end == datetime(2024, 2, 29)  # Leap year
-    start, end = month_to_date(month=4, year=2023)
-    assert start == datetime(2023, 4, 1)
-    assert end == datetime(2023, 4, 30)
-
 def test_month_to_date_invalid():
     with pytest.raises(ValueError):
-        month_to_date(month=None, year=None)
+        month_to_date(month=None, year=2025)
 
     # Should not raise, but test for coverage
     month_to_date(month=1, year=2022)

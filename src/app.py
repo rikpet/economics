@@ -1,7 +1,7 @@
 import os
 import click
 
-
+from cli.allowance import add_allowance, check_allowance, list_allowance, set_default_allowance, update_allowance
 from constants import DATABASE_PATH
 
 
@@ -25,9 +25,10 @@ from cli.balance import balance, dept
 from cli.advanced import (
     add_original_issuers,
     add_original_transactions,
-    query_db
+    query_db,
+    run_db_schema
 )
-from database import create_tables
+from database import create_tables, run_custom_query
 
 @click.group()
 def cli():
@@ -60,6 +61,17 @@ issuer.add_command(modify_issuer)
 issuer.add_command(remove_issuer)
 
 @cli.group()
+def allowance():
+    """Allowance related commands."""
+    pass
+
+allowance.add_command(add_allowance)
+allowance.add_command(list_allowance)
+allowance.add_command(update_allowance)
+allowance.add_command(set_default_allowance)
+
+
+@cli.group()
 def advanced():
     """Advanced database commands."""
     pass
@@ -67,9 +79,12 @@ def advanced():
 advanced.add_command(query_db)
 advanced.add_command(add_original_transactions)
 advanced.add_command(add_original_issuers)
+advanced.add_command(run_db_schema)
 
 
 def main():
     if not os.path.exists(DATABASE_PATH):
         create_tables(DATABASE_PATH)
+    check_allowance()
+
     cli()

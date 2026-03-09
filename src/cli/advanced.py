@@ -40,3 +40,8 @@ def add_original_issuers(file_path):
     
     for issuer in issuers:
         db.classify_issuer(DATABASE_PATH, issuer)
+
+@click.command()
+def run_db_schema():
+    """Run the database schema SQL script to create tables."""
+    db.create_tables(DATABASE_PATH)

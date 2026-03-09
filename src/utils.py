@@ -40,4 +40,4 @@ def month_no_to_name(month_no: int) -> str:
     if 1 <= month_no <= 12:
         return calendar.month_name[month_no]
     else:
-        raise ValueError("Month number must be between 1 and 12.")
+        raise ValueError("Month number must be between 1 and 12, got: {}".format(month_no))

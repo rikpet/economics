@@ -8,6 +8,7 @@ class Transaction():
     origin: str
     main_category: str | None = None
     sub_category: str | None = None
+    comment: str | None = None
 
 @dataclass
 class ReadTransaction():
@@ -18,7 +19,8 @@ class ReadTransaction():
     origin: str
     main_category: str | None = None
     sub_category: str | None = None
-
+    comment: str | None = None
+    
 @dataclass
 class IssuerClassification:
     issuer: str

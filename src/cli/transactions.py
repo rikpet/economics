@@ -9,6 +9,7 @@ import calendar
 
 import database as db
 from parser import parse_remember_transactions, parse_seb_transactions
+from printout import generate_table
 
 
 @click.command(name='add')
@@ -62,14 +63,22 @@ def list_transactions(start_date, end_date, month, year, category: tuple[str], s
         click.echo('No transactions found.')
         return
     
-    max_issuer_length = max(len(t.issuer) for t in transactions)
+    rows = []
+    for trans in transactions:
+        rows.append([
+            trans.id,
+            trans.issuer,
+            trans.amount,
+            trans.date,
+            trans.main_category if trans.main_category is not None else "",
+            trans.sub_category if trans.sub_category is not None else ""
+        ])
 
     click.echo('Listing transactions:\n')
-    click.echo(f'{"ID":<5} | {"ISSUER":<{max_issuer_length + 3}} | {"AMOUNT":<10} | {"DATE":<10} | {"MAIN CATEGORY":<15} | {"SUB CATEGORY":<15}')
-    click.echo('-' * (5 + 3 + max_issuer_length + 3 + 10 + 3 + 3 + 10 + 3 + 15 + 3 + 15))
-    
-    for trans in transactions:
-        click.echo(f'{trans.id:<5} | {trans.issuer:<{max_issuer_length + 3}} | {trans.amount:>10.2f} | {trans.date:<10} | {trans.main_category if trans.main_category is not None else "":<15} | {trans.sub_category if trans.sub_category is not None else "":<15}')
+    click.echo(generate_table(
+        header=["ID", "ISSUER", "AMOUNT", "DATE", "MAIN CATEGORY", "SUB CATEGORY"],
+        rows=rows
+    ))
 
     if show_sum:
         total_amount = sum(t.amount for t in transactions)

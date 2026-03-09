@@ -4,6 +4,7 @@ from balance import Balance
 from database import get_issuer_classification, get_issuer_classification_by_id, get_issuer_classifications, classify_issuer, modify_issuer_classification, remove_issuer_classification
 from app_types import IssuerClassification
 from constants import DATABASE_PATH
+from printout import generate_table
 
 @click.command(name='list')
 def list_issuers():
@@ -14,15 +15,12 @@ def list_issuers():
     if len(issuers) == 0:
         click.echo('No issuers found.')
         return
-    
-    max_issuer_length = max(len(t[1].issuer) for t in issuers)
 
     click.echo('Listing issuers:\n')
-    click.echo(f'{"ID":<5} | {"ISSUER":<{max_issuer_length + 3}} | {"MAIN CATEGORY":<15} | {"SUB CATEGORY":<15}')
-    click.echo('-' * (5 + 3 + max_issuer_length + 3 + 3 + 15 + 3 + 15))
-    
-    for id, issuer in issuers:
-        click.echo(f'{id:<5} | {issuer.issuer:<{max_issuer_length + 3}} | {issuer.main_category:<15} | {issuer.sub_category:<15}')
+    click.echo(generate_table(
+        header=["ID", "ISSUER", "MAIN CATEGORY", "SUB CATEGORY"],
+        rows=[(id, issuer.issuer, issuer.main_category, issuer.sub_category) for id, issuer in issuers]
+    ))
 
 
 @click.command(name='add')
@@ -52,8 +50,6 @@ def add_issuer():
 @click.option('--issuer-id', prompt='Issuer ID to remove', type=int)
 def remove_issuer(issuer_id: int):
     """Remove an issuer classification by ID."""
-    
-
     remove_issuer_classification(DATABASE_PATH, issuer_id)
     click.echo(f'Issuer classification with ID {issuer_id} removed.')
 
