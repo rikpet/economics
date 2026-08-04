@@ -50,6 +50,30 @@ def test_insert_and_get_transaction():
     assert tr.sub_category == 'TestSub'
     assert tr.comment == 'TestComment'
 
+def test_duplicate_verification_number_rejected():
+    t1 = Transaction(
+        date='2025-11-01', issuer='X', amount=10.0, origin='SEB',
+        verification_number='SEB_dup_test'
+    )
+    t2 = Transaction(
+        date='2025-11-02', issuer='Y', amount=20.0, origin='SEB',
+        verification_number='SEB_dup_test'
+    )
+    database.insert_transaction(MOCK_DB_PATH, t1)
+    try:
+        database.insert_transaction(MOCK_DB_PATH, t2)
+    except sqlite3.IntegrityError:
+        return
+    raise AssertionError('Expected IntegrityError on duplicate verification_number')
+
+
+def test_null_verification_numbers_allowed():
+    t1 = Transaction(date='2025-11-03', issuer='A', amount=1.0, origin='SEB')
+    t2 = Transaction(date='2025-11-04', issuer='B', amount=2.0, origin='SEB')
+    database.insert_transaction(MOCK_DB_PATH, t1)
+    database.insert_transaction(MOCK_DB_PATH, t2)
+
+
 def test_classify_issuer_and_get_issuer_classification():
     ic = IssuerClassification(
         issuer='TestIssuer',

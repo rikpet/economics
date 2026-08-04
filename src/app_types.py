@@ -9,6 +9,8 @@ class Transaction():
     main_category: str | None = None
     sub_category: str | None = None
     comment: str | None = None
+    verification_number: str | None = None
+    modification_log: str | None = None
 
 @dataclass
 class ReadTransaction():
@@ -20,7 +22,9 @@ class ReadTransaction():
     main_category: str | None = None
     sub_category: str | None = None
     comment: str | None = None
-    
+    verification_number: str | None = None
+    modification_log: str | None = None
+
 @dataclass
 class IssuerClassification:
     issuer: str

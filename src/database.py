@@ -28,6 +28,18 @@ def create_tables(database_path: str):
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
         c.executescript(schema_sql)
+        try:
+            c.execute('ALTER TABLE transactions ADD COLUMN verification_number TEXT')
+        except sqlite3.OperationalError:
+            pass
+        try:
+            c.execute('ALTER TABLE transactions ADD COLUMN modification_log TEXT')
+        except sqlite3.OperationalError:
+            pass
+        c.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_verification_number '
+            'ON transactions(verification_number) WHERE verification_number IS NOT NULL'
+        )
         conn.commit()
 
 
@@ -42,12 +54,13 @@ def insert_transaction(database_path: str, transaction: Transaction):
                    transaction.amount,
                    transaction.origin,
                    transaction.main_category,
-                   transaction.sub_category, 
-                   transaction.comment))
+                   transaction.sub_category,
+                   transaction.comment,
+                   transaction.verification_number))
         conn.commit()
 
 
-def update_transaction(database_path: str, transaction_id: int, main_category: str | None = None, sub_category: str | None = None, date: datetime | None  = None, comment: str | None = None):
+def update_transaction(database_path: str, transaction_id: int, main_category: str | None = None, sub_category: str | None = None, date: datetime | None  = None, comment: str | None = None, modification_log: str | None = None):
     with sqlite3.connect(database_path) as conn, open('src/queries/update_transaction.sql', 'r', encoding='utf-8') as f:
         c = conn.cursor()
         template = f.read()
@@ -70,6 +83,10 @@ def update_transaction(database_path: str, transaction_id: int, main_category: s
             fields.append('comment = ?')
             params.append(comment)
 
+        if modification_log is not None:
+            fields.append('modification_log = ?')
+            params.append(modification_log)
+
         fields_str = ', '.join(fields)
         query = template.replace('{fields}', fields_str)
         params.append(transaction_id)
@@ -89,7 +106,7 @@ def classify_issuer(database_path, classification: IssuerClassification):
         conn.commit()
 
 
-def get_transactions(database_path: str, start_date: datetime | None = None, end_date: datetime | None = None, main_category: list[str] | None = None, sub_category: list[str] | None = None) -> list[ReadTransaction]:
+def get_transactions(database_path: str, start_date: datetime | None = None, end_date: datetime | None = None, main_category: list[str] | None = None, sub_category: list[str] | None = None, origin: str | None = None) -> list[ReadTransaction]:
     with sqlite3.connect(database_path) as conn:
         c = conn.cursor()
         query = 'SELECT * FROM transactions'
@@ -115,6 +132,10 @@ def get_transactions(database_path: str, start_date: datetime | None = None, end
             conditions.append(f"sub_category IN ({placeholders})")
             params.extend(sub_category)
 
+        if origin:
+            conditions.append('origin LIKE ?')
+            params.append(f'%{origin}%')
+
         if len(conditions) > 0:
             query += ' WHERE ' + ' AND '.join(conditions)
 
@@ -131,7 +152,9 @@ def get_transactions(database_path: str, start_date: datetime | None = None, end
                     origin=row[4],
                     main_category=row[5],
                     sub_category=row[6],
-                    comment=row[7]
+                    comment=row[7],
+                    verification_number=row[8] if len(row) > 8 else None,
+                    modification_log=row[9] if len(row) > 9 else None
                 )
             )
         return transactions
@@ -153,7 +176,9 @@ def get_unclassified_transactions(database_path: str) -> list[ReadTransaction]:
                     origin=row[4],
                     main_category=row[5],
                     sub_category=row[6],
-                    comment=row[7]
+                    comment=row[7],
+                    verification_number=row[8] if len(row) > 8 else None,
+                    modification_log=row[9] if len(row) > 9 else None
                 )
             )
         return transactions
@@ -172,7 +197,9 @@ def get_transaction(database_path, dataid):
                 origin=row[4],
                 main_category=row[5],
                 sub_category=row[6],
-                comment=row[7]
+                comment=row[7],
+                verification_number=row[8] if len(row) > 8 else None,
+                modification_log=row[9] if len(row) > 9 else None
             )
         return None
     

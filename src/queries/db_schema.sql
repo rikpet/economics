@@ -7,7 +7,9 @@ CREATE TABLE IF NOT EXISTS transactions (
     origin TEXT NOT NULL,
     main_category TEXT COLLATE NOCASE,
     sub_category TEXT COLLATE NOCASE,
-    comment TEXT
+    comment TEXT,
+    verification_number TEXT,
+    modification_log TEXT
 );
 
 CREATE TABLE IF NOT EXISTS issuer_classifications (

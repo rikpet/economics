@@ -90,6 +90,9 @@ class Balance():
                 "inkomst": SubCategory(),
                 "utlägg/skuld": SubCategory(True),
                 "internöverföring": SubCategory(True)
+            },
+            "uncategorized": {
+                "övrigt": SubCategory()
             }
         }
 
@@ -105,7 +108,8 @@ class Balance():
 
     def add(self, transaction: ReadTransaction):
         if transaction.main_category is None or transaction.main_category.lower() not in self.balance:
-            raise ValueError(f'Unknown main category: {transaction.main_category}')
+            self.balance["uncategorized"]["övrigt"].add(transaction.amount)
+            return
 
         if transaction.sub_category is None or transaction.sub_category.lower() not in self.balance[transaction.main_category.lower()]:
             raise ValueError(f'Unknown sub-category: {transaction.sub_category}. Main category: {transaction.main_category}')

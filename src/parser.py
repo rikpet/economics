@@ -1,6 +1,23 @@
 import csv
+import hashlib
 from app_types import IssuerClassification, Transaction
 import pandas as pd
+
+
+def _hash_id(prefix: str, *parts: str) -> str:
+    digest = hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:16]
+    return f"{prefix}_{digest}"
+
+
+def _disambiguate(verification_numbers: list[str]) -> list[str]:
+    """Append _2, _3, ... to repeated ids in file order so identical rows stay distinct."""
+    counts: dict[str, int] = {}
+    out: list[str] = []
+    for vn in verification_numbers:
+        n = counts.get(vn, 0) + 1
+        counts[vn] = n
+        out.append(vn if n == 1 else f"{vn}_{n}")
+    return out
 
 
 def parse_seb_transactions(file_path: str) -> list[Transaction]:
@@ -12,19 +29,28 @@ def parse_seb_transactions(file_path: str) -> list[Transaction]:
     """
     with open(file_path, encoding="utf-8-sig") as f:
         reader = csv.DictReader(f, delimiter=';')
-    
+
         transactions = []
 
         for row in reader:
+            date = str(row.get('Valutadatum'))
+            verifikationsnummer = str(row.get('Verifikationsnummer'))
+            text = str(row.get('Text')).strip()
+            belopp = str(row.get('Belopp'))
+            amount = float(belopp.replace(',', '.'))
             transactions.append(
                 Transaction(
-                    date=str(row.get('Valutadatum')),
-                    issuer=str(row.get('Text')).strip(),
-                    amount=float(str(row.get('Belopp')).replace(',', '.')),
-                    origin="SEB"
+                    date=date,
+                    issuer=text,
+                    amount=amount,
+                    origin="SEB",
+                    verification_number=_hash_id("SEB", date, verifikationsnummer, text, belopp)
                 )
             )
 
+    vns = _disambiguate([t.verification_number for t in transactions])
+    for t, vn in zip(transactions, vns):
+        t.verification_number = vn
     return transactions
 
 
@@ -35,23 +61,28 @@ def parse_remember_transactions(file_path: str) -> list[Transaction]:
     Args:
         file_path (str): Path to the Remember card transactions Excel file.
     """
-    with open(file_path, encoding="utf-8") as f:
-        transactions = []
-        df = pd.read_excel(file_path, header=2)
-        for _, row in df.iterrows():
-            date = str(row.get('Datum'))
-            issuer = str(row.get('Detaljer')).strip()
-            amount = float(str(row.get('Fakturabelopp')).replace(',', '.'))
-            origin = "Remember card"
-            transactions.append(
-                Transaction(
-                    date=date,
-                    issuer=issuer,
-                    amount=amount,
-                    origin=origin
-                )
+    transactions = []
+    df = pd.read_excel(file_path, header=2)
+    for _, row in df.iterrows():
+        date = str(row.get('Datum'))
+        issuer = str(row.get('Detaljer')).strip()
+        plats = str(row.get('Plats'))
+        transaktionsbelopp = str(row.get('Transaktionsbelopp'))
+        amount = float(str(row.get('Fakturabelopp')).replace(',', '.'))
+        origin = "Remember card"
+        transactions.append(
+            Transaction(
+                date=date,
+                issuer=issuer,
+                amount=amount,
+                origin=origin,
+                verification_number=_hash_id("REM", date, issuer, plats, transaktionsbelopp)
             )
+        )
 
+    vns = _disambiguate([t.verification_number for t in transactions])
+    for t, vn in zip(transactions, vns):
+        t.verification_number = vn
     return transactions
 
 

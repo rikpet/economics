@@ -1,4 +1,3 @@
-import os
 import click
 
 from cli.allowance import add_allowance, check_allowance, list_allowance, set_default_allowance, update_allowance
@@ -83,8 +82,9 @@ advanced.add_command(run_db_schema)
 
 
 def main():
-    if not os.path.exists(DATABASE_PATH):
-        create_tables(DATABASE_PATH)
+    # create_tables is idempotent (CREATE TABLE IF NOT EXISTS + guarded ALTERs),
+    # so run it on every startup to apply schema migrations to existing databases.
+    create_tables(DATABASE_PATH)
     check_allowance()
 
     cli()
