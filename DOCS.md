@@ -38,7 +38,9 @@ under **Categories**. Switch account with the selector at the top.
    issuer* to classify that issuer automatically from now on.
 3. **Budget**: amounts per month and category. Click an amount to see its transactions.
 4. **Charts**: income and expenses per month, the spread over categories, and one category
-   compared with the year before. Click a category bar to look closer at it.
+   compared with the year before. Click a category bar to look closer at it. Above the
+   charts you can pick months and categories; clicking a category in a chart legend hides
+   it from the charts (the budget is not affected).
 
 Under **Categories** you can hide categories you don't want in the budget, such as
 Bokföring or internal transfers: a whole group with *Hide from budget*, or a single

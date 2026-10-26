@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.2.0
+
+- Editing a transaction works again in Home Assistant. Home Assistant's own security check
+  rejected the edit link and answered "400: Bad Request" before it reached the add-on.
+- Charts: hide categories straight from the chart. Click a category in the legend, or use
+  the category buttons above the charts. This only changes the charts (the budget is left
+  as it is) and is remembered for each account.
+- Charts: pick which months to look at, for example only January to March, or the whole
+  year without July. The key figures and every chart follow the selection.
+
 ## 2.1.0
 
 - New **Charts** page: income and expenses per month, expenses per month by category,

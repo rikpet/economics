@@ -241,3 +241,33 @@ table.budget td.total { font-weight: 600; }
   .cat-grid-head { display: none; }
   .cat-grid-row .num::after { content: " used"; }
 }
+
+/* ---- chart filters ---------------------------------------------------------------------- */
+.filter-bar { padding: .75rem 1rem; }
+.filter-bar[open] { display: grid; gap: .75rem; }
+.filter-bar summary { cursor: pointer; font-size: .9rem; color: var(--muted); }
+.filter-bar summary:hover { color: var(--text); }
+.filter-bar fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.filter-bar legend { font-size: .85rem; color: var(--muted); margin-bottom: .35rem; padding: 0; }
+.filter-bar .hint { margin: .4rem 0 0; font-size: .8rem; }
+.chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.chip { position: relative; display: inline-flex; cursor: pointer; }
+.chip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.chip span {
+  display: inline-block; padding: .25rem .65rem; border-radius: 999px; font-size: .85rem;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+}
+.chip input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chip-action { min-height: 0; padding: .25rem .65rem; border-radius: 999px; font-size: .85rem; }
+.viz-legend-toggle {
+  display: inline-flex; align-items: center; gap: .4rem; min-height: 0; padding: .1rem .35rem;
+  margin: -.1rem -.35rem; background: none; border: 0; border-radius: 4px; color: var(--muted); font-size: inherit;
+}
+.viz-legend-toggle:hover { background: var(--surface-2); color: var(--text); }
+.viz-legend-x { opacity: 0; font-size: .9em; }
+.viz-legend-toggle:hover .viz-legend-x, .viz-legend-toggle:focus-visible .viz-legend-x { opacity: 1; }
+@media (hover: none) { .viz-legend-x { opacity: .6; } }
+@media (max-width: 640px) {
+  .chip span, .chip-action { font-size: 16px !important; }
+}

@@ -189,25 +189,68 @@ def test_edit_redirects_back_through_ingress(client, path):
     prefix = '/api/hassio_ingress/abc123'
     headers = {'X-Ingress-Path': prefix}
 
-    listing = client.get('/1/transactions?year=2025', headers=headers).get_data(as_text=True)
+    listing = client.get('/1/transactions?year=2025&month=1', headers=headers).get_data(as_text=True)
     edit_url = re.search(r'href="([^"]*/transactions/%d[^"]*)"' % trans.id, listing).group(1)
     assert edit_url.startswith(prefix)
     edit_url = edit_url[len(prefix):].replace('&amp;', '&')
 
     page = client.get(edit_url, headers=headers).get_data(as_text=True)
-    assert f'href="{prefix}/1/transactions?year=2025"' in page  # Cancel
+    assert f'href="{prefix}/1/transactions?year=2025&amp;month=1"' in page  # Cancel
 
     response = client.post(edit_url, headers=headers, data={'comment': 'x'})
     assert response.status_code == 302
-    assert response.headers['Location'] == f'{prefix}/1/transactions?year=2025'
+    assert response.headers['Location'] == f'{prefix}/1/transactions?year=2025&month=1'
 
     response = client.post(edit_url, headers=headers, data={'date': 'nope'})
     assert response.headers['Location'].startswith(f'{prefix}/1/transactions/{trans.id}?')
 
-    # Only local paths are followed.
-    response = client.post(f'/1/transactions/{trans.id}?next=//evil.example/x',
+    # Only the list's own filters are carried over.
+    response = client.post(f'/1/transactions/{trans.id}?back=evil%3D1%26year%3D2024',
                            headers=headers, data={'comment': 'y'})
-    assert response.headers['Location'] == f'{prefix}/1/transactions'
+    assert response.headers['Location'] == f'{prefix}/1/transactions?year=2024'
+
+
+# Home Assistant's security filter (homeassistant/components/http/security_filter.py)
+# answers "400: Bad Request" before the add-on is reached when a URL matches this.
+HA_SECURITY_FILTER = re.compile(
+    r"(?:proc/self/environ|(\.\.//?)+|[a-zA-Z0-9_]=/([a-z0-9_.]//?)+"
+    r"|(?m:^(?>[^\n]*?union)(?>[^\n]*?select)(?>[^\n]*?\())"
+    r"|(?m:^(?>[^\n]*?concat)(?>[^\n]*?\()))",
+    flags=re.IGNORECASE,
+)
+
+
+def test_no_url_is_blocked_by_home_assistant(client, path):
+    from html import unescape
+    from urllib.parse import unquote
+
+    family = db.create_account(path, 'Familj', 'family')
+    for account_id, main, sub in ((1, 'bokföring', 'utlägg/skuld'), (family, 'barn', 'förskola/skola')):
+        db.insert_transaction(path, account_id, Transaction('2025-03-01', 'A/B', -10.0, 'SEB', main, sub))
+        db.insert_transaction(path, account_id, Transaction('2025-03-02', 'C', -5.0, 'SEB'))
+
+    def unquote_all(value):
+        while (once := unquote(value)) != value:
+            value = once
+        return value
+
+    pages = ['/accounts']
+    for account_id in (1, family):
+        tx = f'/{account_id}/transactions'
+        pages += [f'/{account_id}/', f'/{account_id}/?year=2025&subs=1', f'/{account_id}/charts?year=2025',
+                  tx, f'{tx}?year=2025&month=3', f'{tx}?year=2025&category=bokföring&sub=utlägg/skuld',
+                  f'{account_id}/classify', f'/{account_id}/issuers', f'/{account_id}/categories']
+    pages += [f'/1/transactions/{t.id}?back=year%3D2025' for t in db.get_transactions(path, 1)]
+
+    checked = 0
+    for page in pages:
+        page = page if page.startswith('/') else '/' + page
+        html = client.get(page).get_data(as_text=True)
+        for url in re.findall(r'(?:href|action)="([^"]+)"', html):
+            url = unescape(url)
+            assert not HA_SECURITY_FILTER.search(unquote_all(url)), (page, url)
+            checked += 1
+    assert checked > 200
 
 
 def test_hide_categories(client, path):
@@ -265,3 +308,56 @@ def test_charts_page(client, path):
     html = client.get('/1/charts?year=2025').get_data(as_text=True)
     data = json.loads(re.search(r'id="chart-data">(.*?)</script>', html, re.S).group(1))
     assert 'mat' not in [t['key'] for t in data['totals']]
+
+
+def test_period_label():
+    from webapp import period_label
+    assert period_label([1, 2, 3, 7]) == 'Jan–Mar, Jul'
+    assert period_label([12]) == 'Dec'
+    assert period_label(list(range(1, 13))) == 'Jan–Dec'
+
+
+def chart_data(client, url):
+    html = client.get(url).get_data(as_text=True)
+    return json.loads(re.search(r'id="chart-data">(.*?)</script>', html, re.S).group(1)), html
+
+
+def test_charts_month_filter(client, path):
+    for month, amount in ((1, -100.0), (2, -200.0), (7, -5000.0)):
+        db.insert_transaction(path, 1, Transaction(f'2025-{month:02d}-05', 'ICA', amount, 'SEB', 'mat', 'butik'))
+
+    data, html = chart_data(client, '/1/charts?year=2025&f=1&m=1&m=2&offered=mat&c=mat')
+    assert data['months'] == ['Jan', 'Feb']
+    assert data['flow']['expenses'] == [100, 200]
+    assert data['totals'][0] == {'key': 'mat', 'label': 'Mat', 'value': 300}
+    assert data['trend']['current'] == [100, 200]
+    assert 'Jan–Feb' in html
+
+    # No months ticked means the whole year.
+    data, _ = chart_data(client, '/1/charts?year=2025&f=1&offered=mat&c=mat')
+    assert len(data['months']) == 12 and data['totals'][0]['value'] == 5300
+
+
+def test_charts_hide_categories(client, path):
+    db.insert_transaction(path, 1, Transaction('2025-03-01', 'ICA', -100.0, 'SEB', 'mat', 'butik'))
+    db.insert_transaction(path, 1, Transaction('2025-03-02', 'BANK', -900.0, 'SEB', 'lån', 'övrigt'))
+    db.insert_transaction(path, 1, Transaction('2025-03-25', 'LON', 2000.0, 'SEB', 'inkomst', 'övrigt'))
+
+    offered = '&'.join(f'offered={m}' for m in ('inkomst', 'mat', 'lån'))
+    response = client.get(f'/1/charts?year=2025&f=1&{offered}&c=inkomst&c=mat')
+    data = json.loads(re.search(r'id="chart-data">(.*?)</script>', response.get_data(as_text=True), re.S).group(1))
+    assert [t['key'] for t in data['totals']] == ['mat']
+    assert data['flow']['expenses'][2] == 100
+    assert 'economics_charts_1=l%C3%A5n;' in response.headers['Set-Cookie']
+
+    # The choice is remembered for the account, and only affects the charts.
+    data, _ = chart_data(client, '/1/charts?year=2025')
+    assert [t['key'] for t in data['totals']] == ['mat']
+    assert '<th scope="row">Lån</th>' in client.get('/1/?year=2025').get_data(as_text=True)
+
+    # A category the form didn't offer keeps its state.
+    data, _ = chart_data(client, '/1/charts?year=2025&f=1&offered=mat&c=mat')
+    assert [t['key'] for t in data['totals']] == ['mat']
+
+    data, _ = chart_data(client, f'/1/charts?year=2025&f=1&{offered}&c=inkomst&c=mat&c=l%C3%A5n')
+    assert [t['key'] for t in data['totals']] == ['lån', 'mat']

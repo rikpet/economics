@@ -106,7 +106,10 @@ class CashFlow:
     expenses_by_main: dict[str, list[float]]
 
 
-def cash_flow(balances: dict[int, Balance], categories: list[Category]) -> CashFlow:
+def cash_flow(balances: dict[int, Balance], categories: list[Category],
+              exclude: set[str] | None = None) -> CashFlow:
+    """Income and expenses per month. `exclude` lists main categories to leave out."""
+    exclude = exclude or set()
     for b in balances.values():
         if b.derive_allowance:
             b.get("inkomst")  # sets the derived inkomst/månadspeng
@@ -115,9 +118,9 @@ def cash_flow(balances: dict[int, Balance], categories: list[Category]) -> CashF
     expenses = [0.0] * len(balances)
     by_main: dict[str, list[float]] = {}
     for c in categories:
-        if c.hidden:
-            continue
         main, sub = c.main_category.lower(), c.sub_category.lower()
+        if c.hidden or main in exclude:
+            continue
         for i, b in enumerate(balances.values()):
             value = b.get_sub_category(main, sub)
             if c.invert_sign:  # expense, already a positive cost
@@ -128,7 +131,7 @@ def cash_flow(balances: dict[int, Balance], categories: list[Category]) -> CashF
 
     # Unclassified transactions are mostly purchases: count them as expenses (positive cost).
     uncategorized = [-b.get("uncategorized") for b in balances.values()]
-    if any(uncategorized):
+    if any(uncategorized) and "uncategorized" not in exclude:
         by_main["uncategorized"] = uncategorized
         expenses = [e + u for e, u in zip(expenses, uncategorized)]
     return CashFlow(income, expenses, by_main)

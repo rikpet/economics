@@ -3,6 +3,7 @@
 import os
 import secrets
 import tempfile
+from urllib.parse import parse_qsl, quote, unquote
 from datetime import datetime
 from typing import Callable
 
@@ -30,6 +31,8 @@ from category_templates import TEMPLATES
 from utils import month_to_date
 
 ACCOUNT_COOKIE = "economics_account"
+CHARTS_COOKIE = "economics_charts"  # categories left out of the charts, per account
+TRANSACTION_FILTERS = ("year", "month", "category", "sub", "origin", "q", "sort")
 STACK_SERIES = 7  # colored categories in the stacked chart; the rest are "Other"
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -61,6 +64,18 @@ def cookie_path() -> str:
 class ScopedSessionInterface(SecureCookieSessionInterface):
     def get_cookie_path(self, app):
         return cookie_path()
+
+
+def period_label(months: list[int]) -> str:
+    """Selected months as text, with runs collapsed: [1, 2, 3, 7] -> 'Jan–Mar, Jul'."""
+    runs: list[list[int]] = []
+    for m in months:
+        if runs and m == runs[-1][-1] + 1:
+            runs[-1].append(m)
+        else:
+            runs.append([m])
+    return ", ".join(MONTHS[r[0] - 1] if len(r) == 1 else f"{MONTHS[r[0] - 1]}\u2013{MONTHS[r[-1] - 1]}"
+                     for r in runs)
 
 
 def format_money(value: float | None) -> str:
@@ -122,11 +137,14 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         query = request.query_string.decode()
         return request.script_root + request.path + (f"?{query}" if query else "")
 
-    def local_target(value: str | None, default: str) -> str:
-        """Resolve a `next` parameter (an app path like /1/transactions?year=2025)."""
-        if value and value.startswith("/") and not value.startswith("//") and "\\" not in value:
-            return request.script_root + value
-        return default
+    def transactions_url(account_id: int, filters: str | None) -> str:
+        """The transaction list with the filters it was left with.
+
+        Links carry only the list's query string (year=2025&month=3), never a path:
+        Home Assistant's security filter answers 400 to query strings like next=/1/...
+        """
+        args = {k: v for k, v in parse_qsl(filters or "") if k in TRANSACTION_FILTERS}
+        return url_for("transactions", account_id=account_id, **args)
 
     def year_options(account_id: int) -> list[int]:
         return sorted(set(db.get_years(dbp(), account_id)) | {datetime.now().year}, reverse=True)
@@ -193,70 +211,106 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         account = load_account(account_id)
         year = year_arg()
         now = datetime.now()
-        # Months that have happened; the rest of the year is not averaged over.
+        # Months that have happened; later months are not averaged over.
         elapsed = 12 if year < now.year else (now.month if year == now.year else 0)
 
         categories = db.get_categories(dbp(), account_id)
         hidden = hidden_categories(categories)
         balances = monthly_balances(dbp(), account, year)
-        flow = cash_flow(balances, categories)
         rows = budget_table(balances, show_sub_category=True, hidden=hidden)
+        all_mains = [r for r in rows if not r.is_sub]
+
+        # Filters. `f` marks a submitted filter form; without it the defaults apply: every
+        # month, and the categories this account last chose to show in the charts.
+        submitted = request.args.get("f") == "1"
+        months = sorted({m for m in request.args.getlist("m", type=int) if 1 <= m <= 12})
+        months = months or list(range(1, 13))
+        cookie = f"{CHARTS_COOKIE}_{account_id}"
+        excluded = {unquote(c) for c in request.cookies.get(cookie, "").split(",") if c}
+        if submitted:
+            # Only the chips the form offered can change; a category that wasn't on the
+            # page (e.g. another year's) keeps its previous state.
+            offered = set(request.args.getlist("offered"))
+            excluded = (excluded - offered) | (offered - set(request.args.getlist("c")))
+        idx = [m - 1 for m in months]
+
+        def pick(values: list[float]) -> list[float]:
+            return [values[i] for i in idx]
+
+        flow = cash_flow(balances, categories, exclude=excluded)
+        rows = [r for r in rows if r.main_category not in excluded]
         previous_rows = budget_table(monthly_balances(dbp(), account, year - 1),
                                      show_sub_category=True, hidden=hidden)
 
         order = [r.main_category for r in rows if not r.is_sub]
-        totals = sorted(((main, sum(values)) for main, values in flow.expenses_by_main.items()),
+        totals = sorted(((main, total) for main, values in flow.expenses_by_main.items()
+                         if (total := sum(pick(values)))),
                         key=lambda item: -item[1])
 
         # Stacked columns: the largest categories get a color, in category-tree order so a
         # category keeps its color when the ranking shifts; the rest fold into "Other".
         top = sorted((main for main, total in totals[:STACK_SERIES] if total > 0),
                      key=lambda main: order.index(main) if main in order else len(order))
-        stack = [{"key": main, "name": main.capitalize(), "values": flow.expenses_by_main[main]}
-                 for main in top]
+        stack = [{"key": main, "name": main.capitalize(),
+                  "values": pick(flow.expenses_by_main[main])} for main in top]
         rest = [main for main, _ in totals
-                if main not in top and any(flow.expenses_by_main[main])]
+                if main not in top and any(pick(flow.expenses_by_main[main]))]
         if rest:
             stack.append({"key": "other", "name": "Other", "other": True,
-                          "values": [sum(flow.expenses_by_main[m][i] for m in rest)
-                                     for i in range(12)]})
+                          "values": [sum(flow.expenses_by_main[m][i] for m in rest) for i in idx]})
 
-        selected = request.args.get("category") or (totals[0][0] if totals else None)
+        # Look closer at the chosen category, else the largest expense.
+        largest = next((main for main, _ in totals if main in order), None)
+        selected = request.args.get("category")
         if selected not in order:
-            selected = order[0] if order else None
+            selected = largest or (order[0] if order else None)
+        past = [i for i in idx if i < elapsed]
         trend = subs = None
         if selected:
             main_row = next(r for r in rows if r.main_category == selected and not r.is_sub)
             previous_row = next((r for r in previous_rows
                                  if r.main_category == selected and not r.is_sub), None)
+            previous = pick(previous_row.values) if previous_row else []
             trend = {
                 "name": main_row.label,
-                "current": main_row.values[:elapsed] if elapsed else [],
+                "current": [main_row.values[i] for i in past],
                 # Left out when the previous year has nothing to compare with.
-                "previous": previous_row.values if previous_row and any(previous_row.values) else [],
+                "previous": previous if any(previous) else [],
             }
-            subs = sorted(({"label": r.label, "key": r.sub_category, "value": r.total} for r in rows
-                           if r.is_sub and r.main_category == selected and r.total),
+            subs = sorted(({"label": r.label, "key": r.sub_category, "value": sum(pick(r.values))}
+                           for r in rows if r.is_sub and r.main_category == selected),
                           key=lambda item: -item["value"])
+            subs = [item for item in subs if item["value"]]
 
-        income = sum(flow.income[:elapsed or 12])
-        expenses = sum(flow.expenses[:elapsed or 12])
+        income = sum(flow.income[i] for i in past)
+        expenses = sum(flow.expenses[i] for i in past)
         chart_data = {
-            "months": MONTHS,
+            "months": [MONTHS[i] for i in idx],
             "year": year,
             "previousYear": year - 1,
-            "flow": {"income": flow.income, "expenses": flow.expenses},
+            "flow": {"income": pick(flow.income), "expenses": pick(flow.expenses)},
             "stack": stack,
             "totals": [{"key": m, "label": m.capitalize(), "value": v} for m, v in totals],
             "selected": selected,
             "trend": trend,
             "subs": subs,
         }
+
+        @after_this_request
+        def remember(response):
+            if submitted:
+                response.set_cookie(cookie, ",".join(quote(c) for c in sorted(excluded)),
+                                    max_age=365 * 24 * 3600,
+                                    path=cookie_path(), samesite="Lax")
+            return response
+
         return render_template(
             "charts.html", year=year, years=year_options(account_id), chart=chart_data,
-            selected=selected, mains=[r for r in rows if not r.is_sub],
-            income=income, expenses=expenses, elapsed=elapsed,
-            average=expenses / elapsed if elapsed else 0, hidden_count=len(hidden),
+            selected=selected, mains=[r for r in rows if not r.is_sub], all_mains=all_mains,
+            excluded=excluded, months_selected=months, all_months=len(months) == 12,
+            period=period_label(months),
+            income=income, expenses=expenses, past_count=len(past),
+            average=expenses / len(past) if past else 0, hidden_count=len(hidden),
         )
 
     # ---------------------------------------------------------------------------------
@@ -329,13 +383,11 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
                     dbp(), account_id, transaction_id, category.main_category,
                     category.sub_category, remember_issuer=True)
             flash("Transaction saved." if changed else "Nothing changed.", "ok")
-            return redirect(local_target(request.args.get("next"),
-                                         url_for("transactions", account_id=account_id)))
+            return redirect(transactions_url(account_id, request.args.get("back")))
 
         return render_template("transaction_edit.html", t=trans,
                                groups=category_choices(account_id),
-                               back=local_target(request.args.get("next"),
-                                                 url_for("transactions", account_id=account_id)))
+                               back=transactions_url(account_id, request.args.get("back")))
 
     # ---------------------------------------------------------------------------------
     # Import

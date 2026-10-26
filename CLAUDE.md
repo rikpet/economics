@@ -52,8 +52,10 @@ Set `ECONOMICS_DB` (or pass `--db`) to a scratch file. Without it the CLI uses t
 real database on Windows (OneDrive path in `constants.py`).
 
 Prefer driving the real UI in a browser (Playwright) over trusting tests alone, and test
-through an Ingress-like proxy that strips a prefix and sets `X-Ingress-Path` — the
-Ingress bugs so far were invisible without one. Check both light and dark mode, and a
+through an Ingress-like proxy that strips a prefix, sets `X-Ingress-Path` and applies HA's
+security filter — the Ingress bugs so far were invisible without one. The most faithful
+proxy copies the two aiohttp hops from HA Core `hassio/ingress.py` and Supervisor
+`api/ingress.py`. Check both light and dark mode, and a
 390px-wide viewport.
 
 ## Conventions
@@ -106,7 +108,9 @@ the sensors, including their share of the main category's total. They still exis
 classification. `econ balance --all` shows them.
 
 **Charts** are drawn client-side by `webapp/static/charts.js` (no dependencies, no CDN)
-from JSON the `charts` route embeds. Colors are CSS variables (`--series-1..8`,
+from JSON the `charts` route embeds. The filter form (`f=1`, months `m`, shown categories
+`c`, `offered`) only affects the charts; the categories left out are remembered per account
+in the `economics_charts_<id>` cookie, months are not. Colors are CSS variables (`--series-1..8`,
 `--viz-other`, `--viz-context`) so dark mode needs no redraw. The categorical palette order
 is validated for colour-blind safety — don't reorder or invent colors; fold extra series
 into "Other".
@@ -118,11 +122,18 @@ to keep idle memory low.
 
 ## Gotchas (each one cost a real bug)
 
+- **HA's security filter rejects URLs before they reach the add-on.** Home Assistant Core
+  (`homeassistant/components/http/security_filter.py`) answers "400: Bad Request" when the
+  unquoted path+query matches patterns like `[a-zA-Z0-9_]=/([a-z0-9_.]//?)+` — so a query
+  parameter whose value starts with a path (`?next=/1/transactions`) can never be used.
+  Pass filters, not paths (see `transactions_url()` and the `back` parameter).
+  `test_no_url_is_blocked_by_home_assistant` runs the same regex over every rendered link;
+  keep it passing when adding links. "400: Bad Request" in that exact form is aiohttp's,
+  i.e. HA's, not Flask's.
 - **Ingress redirects.** Never redirect to `request.url` (absolute, with the add-on's
-  internal host) or to a bare app path. Use `url_for()` or the `here()` / `local_target()`
-  helpers in `webapp/__init__.py`; `IngressMiddleware` sets `SCRIPT_NAME` from
-  `X-Ingress-Path` so generated URLs carry the prefix. A dropped prefix shows up in HA as
-  "400: Bad Request".
+  internal host) or to a bare app path. Use `url_for()`, `here()` or `transactions_url()`
+  in `webapp/__init__.py`; `IngressMiddleware` sets `SCRIPT_NAME` from `X-Ingress-Path` so
+  generated URLs carry the prefix.
 - **Cookies under Ingress** share Home Assistant's origin with every other add-on. Ours
   are named `economics_*` and scoped to the Ingress path (`cookie_path()`).
 - **Static caching.** Asset links carry `?v={{ app_version }}`; without it browsers keep the

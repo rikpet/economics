@@ -126,17 +126,32 @@
 
   // ---- legend --------------------------------------------------------------------------
 
-  function legend(container, items) {
+  // Items with a key and an onHide callback become buttons that hide that series.
+  function legend(container, items, onHide) {
     const box = document.createElement("div");
     box.className = "viz-legend";
     for (const item of items) {
-      const entry = document.createElement("span");
+      const hideable = onHide && item.key;
+      const entry = document.createElement(hideable ? "button" : "span");
+      if (hideable) {
+        entry.type = "button";
+        entry.className = "viz-legend-toggle";
+        entry.title = `Hide ${item.name} from the charts`;
+        entry.addEventListener("click", () => onHide(item.key));
+      }
       const key = document.createElement("span");
       key.className = item.line ? "viz-key-line" : "viz-key";
       key.style.background = item.color;
       if (item.dashed) key.classList.add("dashed");
       entry.appendChild(key);
       entry.appendChild(document.createTextNode(item.name));
+      if (hideable) {
+        const x = document.createElement("span");
+        x.className = "viz-legend-x";
+        x.setAttribute("aria-hidden", "true");
+        x.textContent = "\u00d7";
+        entry.appendChild(x);
+      }
       box.appendChild(entry);
     }
     container.before(box);
@@ -169,7 +184,7 @@
 
   function columns(container, opts) {
     const series = opts.series;
-    legend(container, series.map((s) => ({ name: s.name, color: color(s.color) })));
+    legend(container, series.map((s) => ({ name: s.name, color: color(s.color), key: s.key })), opts.onHide);
     function draw() {
       container.replaceChildren();
       const width = container.clientWidth;

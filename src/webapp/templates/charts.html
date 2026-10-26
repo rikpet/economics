@@ -1,25 +1,53 @@
 {% extends "base.html" %}
 {% block title %}Charts {{ year }}{% endblock %}
 {% block content %}
+<form method="get" id="chart-filters">
+<input type="hidden" name="f" value="1">
 <div class="page-head">
   <h1>Charts {{ year }}</h1>
-  <form method="get" class="inline">
+  <div class="inline">
     <label class="visually-hidden" for="year">Year</label>
-    <select id="year" name="year" onchange="this.form.submit()">
+    <select id="year" name="year">
       {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
     </select>
-    <label class="visually-hidden" for="category">Category</label>
-    <select id="category" name="category" onchange="this.form.submit()">
+    <label class="visually-hidden" for="category">Category to look closer at</label>
+    <select id="category" name="category">
       {% for r in mains %}<option value="{{ r.main_category }}" {% if r.main_category == selected %}selected{% endif %}>{{ r.label }}</option>{% endfor %}
     </select>
-    <noscript><button type="submit">Show</button></noscript>
-  </form>
+  </div>
 </div>
 
+<details class="card filter-bar" id="filter-details" open>
+  <summary>Filters: {{ 'all months' if all_months else period }}{% if excluded %} · {{ excluded|length }} {{ 'category' if excluded|length == 1 else 'categories' }} hidden{% endif %}</summary>
+  <fieldset>
+    <legend>Months</legend>
+    <div class="chips">
+      {% for m in months %}
+      <label class="chip"><input type="checkbox" name="m" value="{{ loop.index }}" {% if loop.index in months_selected %}checked{% endif %}><span>{{ m }}</span></label>
+      {% endfor %}
+      {% if not all_months %}<button type="submit" name="all_months" value="1" class="secondary chip-action" data-clear="m">All months</button>{% endif %}
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Categories in the charts</legend>
+    <div class="chips">
+      {% for r in all_mains %}
+      <input type="hidden" name="offered" value="{{ r.main_category }}">
+      <label class="chip"><input type="checkbox" name="c" value="{{ r.main_category }}" {% if r.main_category not in excluded %}checked{% endif %}><span>{{ r.label }}</span></label>
+      {% endfor %}
+      {% if excluded %}<button type="submit" class="secondary chip-action" data-check="c">Show all</button>{% endif %}
+    </div>
+    <p class="hint">Click a category in a chart legend to hide it. This only changes the charts; to hide a category in the budget as well, use <a href="{{ url_for('categories', account_id=account.id) }}">Categories</a>.</p>
+  </fieldset>
+  <noscript><button type="submit">Apply</button></noscript>
+</details>
+</form>
+
 <div class="stat-row">
-  <div class="stat"><div class="stat-label">Income{% if elapsed and elapsed < 12 %}, year to date{% endif %}</div><div class="stat-value">{{ income|money }} kr</div></div>
-  <div class="stat"><div class="stat-label">Expenses{% if elapsed and elapsed < 12 %}, year to date{% endif %}</div><div class="stat-value">{{ expenses|money }} kr</div></div>
-  <div class="stat"><div class="stat-label">Net</div><div class="stat-value">{{ (income - expenses)|money }} kr</div></div>
+  {% set suffix = '' if all_months and past_count == 12 else (', ' ~ period if not all_months else ', year to date') %}
+  <div class="stat"><div class="stat-label">Income{{ suffix }}</div><div class="stat-value">{{ income|money }} kr</div></div>
+  <div class="stat"><div class="stat-label">Expenses{{ suffix }}</div><div class="stat-value">{{ expenses|money }} kr</div></div>
+  <div class="stat"><div class="stat-label">Net{{ suffix }}</div><div class="stat-value">{{ (income - expenses)|money }} kr</div></div>
   <div class="stat"><div class="stat-label">Average expenses per month</div><div class="stat-value">{{ average|money }} kr</div></div>
 </div>
 
@@ -35,7 +63,7 @@
   </section>
 
   <section class="card chart-card">
-    <h2>Expenses by category, {{ year }}</h2>
+    <h2>Expenses by category, {{ year }}{% if not all_months %}, {{ period }}{% endif %}</h2>
     <p class="hint">Click a category to look closer at it below.</p>
     <div class="chart" id="chart-totals"></div>
   </section>
@@ -44,7 +72,7 @@
   <section class="card chart-card">
     <h2>{{ chart.trend.name }} per month, {{ year }}{% if chart.trend.previous %} and {{ year - 1 }}{% endif %}</h2>
     <div class="chart" id="chart-trend"></div>
-    <h2 class="sub-head">{{ chart.trend.name }} by sub-category, {{ year }}</h2>
+    <h2 class="sub-head">{{ chart.trend.name }} by sub-category, {{ year }}{% if not all_months %}, {{ period }}{% endif %}</h2>
     <div class="chart" id="chart-subs"></div>
   </section>
   {% endif %}
@@ -63,6 +91,33 @@
   const months = data.months;
   const full = months.map((m) => `${m} ${data.year}`);
   const base = location.pathname;
+  const form = document.getElementById("chart-filters");
+  // On phones the filters start folded so the charts are visible first.
+  if (window.matchMedia("(max-width: 640px)").matches) {
+    document.getElementById("filter-details").open = false;
+  }
+
+  // Every filter change reloads the page with the new selection.
+  form.addEventListener("change", () => form.submit());
+  form.querySelectorAll("[data-clear]").forEach((button) => button.addEventListener("click", () => {
+    form.querySelectorAll(`input[name="${button.dataset.clear}"]`).forEach((box) => { box.checked = false; });
+  }));
+  form.querySelectorAll("[data-check]").forEach((button) => button.addEventListener("click", () => {
+    form.querySelectorAll(`input[name="${button.dataset.check}"]`).forEach((box) => { box.checked = true; });
+  }));
+  function hideCategory(key) {
+    const box = form.querySelector(`input[name="c"][value="${CSS.escape(key)}"]`);
+    if (!box) return;
+    box.checked = false;
+    form.submit();
+  }
+  // Links keep the current filters.
+  const filters = new URLSearchParams(new FormData(form));
+  function withFilters(changes) {
+    const params = new URLSearchParams(filters);
+    for (const [k, v] of Object.entries(changes)) params.set(k, v);
+    return `${base}?${params}`;
+  }
 
   C.columns(document.getElementById("chart-flow"), {
     label: "Income and expenses per month", labels: months, fullLabels: full,
@@ -76,14 +131,16 @@
     label: "Expenses per month by category", labels: months, fullLabels: full, stacked: true,
     series: data.stack.map((s, i) => ({
       name: s.name, values: s.values, color: s.other ? "--viz-other" : `--series-${i + 1}`,
+      key: s.other ? null : s.key,
     })),
+    onHide: hideCategory,
   });
 
   C.hbars(document.getElementById("chart-totals"), {
     label: "Expenses by category", valueLabel: `Expenses ${data.year}`, selected: data.selected,
     items: data.totals.map((t) => ({
       key: t.key, label: t.label, value: t.value,
-      href: `${base}?year=${data.year}&category=${encodeURIComponent(t.key)}`,
+      href: withFilters({ category: t.key }),
     })),
   });
 

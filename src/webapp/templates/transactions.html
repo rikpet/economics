@@ -52,7 +52,7 @@
       <td>{{ t.origin }}</td>
       <td>{% if t.main_category %}{{ t.main_category|capitalize }} › {{ (t.sub_category or '')|capitalize }}{% else %}<span class="badge">Unclassified</span>{% endif %}</td>
       <td>{{ t.comment or '' }}</td>
-      <td><a href="{{ url_for('edit_transaction', account_id=account.id, transaction_id=t.id, next=request.full_path) }}">Edit</a></td>
+      <td><a href="{{ url_for('edit_transaction', account_id=account.id, transaction_id=t.id, back=request.query_string.decode()) }}">Edit</a></td>
     </tr>
   {% else %}
     <tr><td colspan="7" class="muted">No transactions match the filter.</td></tr>
