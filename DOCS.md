@@ -5,27 +5,12 @@ Import bank files, classify transactions and follow the budget for several accou
 
 ## Installation
 
-The repository is private, so add it in one of these ways:
+1. In Home Assistant: **Settings → Add-ons → Add-on store → ⋮ → Repositories**
+2. Add `https://github.com/rikpet/economics`
+3. Install **Economics**, start it and enable **Show in sidebar**
 
-**As an add-on repository.** Create a GitHub
-[fine-grained token](https://github.com/settings/personal-access-tokens) with read access to
-*Contents* of `rikpet/economics`. In Home Assistant go to
-**Settings → Add-ons → Add-on store → ⋮ → Repositories** and add
-
-```
-https://<github-user>:<token>@github.com/rikpet/economics
-```
-
-The add-on *Economics* then shows up in the store. Updates appear when `version` in
-`config.yaml` is bumped.
-
-**As a local add-on.** Copy the repository (at least `config.yaml`, `Dockerfile`,
-`.dockerignore`, `pyproject.toml`, `README.md`, `DOCS.md`, `translations/` and `src/`) to
-`/addons/economics` on the Home Assistant host, e.g. with the *Samba share* or *Advanced SSH*
-add-on. Then click **⋮ → Check for updates** in the add-on store and install it from *Local
-add-ons*.
-
-Install, start, and enable **Show in sidebar**.
+Updates appear when `version` in `config.yaml` is bumped (**⋮ → Check for updates** to look
+right away). It can be installed next to other add-ons such as *Todo*; see below.
 
 ## Bringing over the existing database
 
