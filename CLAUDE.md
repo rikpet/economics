@@ -1,0 +1,142 @@
+# CLAUDE.md
+
+Guidance for Claude Code when working in this repository.
+
+## What this is
+
+Personal economy app for Rikard Pettersson: import bank exports (SEB csv, Remember card
+xls), classify the transactions and follow a budget per month and category. Data is split
+into **accounts** (e.g. *Familj* and *Privat*), each with its own transactions, issuer
+rules and category tree. Storage is SQLite. It runs three ways on the same database:
+
+- **Home Assistant add-on** on a Raspberry Pi 5 (aarch64): Flask web UI via Ingress, plus
+  budget sensors pushed to HA. Runs next to the user's other add-on, `rikpet/ha-todo`.
+- **Web UI** locally: `econ web` (port 8100).
+- **CLI**: `econ ...` (click), used on the user's Windows laptop.
+
+GitHub: `rikpet/economics` (public).
+
+## Layout
+
+```
+config.yaml, Dockerfile,     the HA add-on, at the repo root (Supervisor finds any
+.dockerignore, translations/ config.* in the repo, so no subfolder is needed)
+repository.yaml              HA add-on repository manifest
+DOCS.md, CHANGELOG.md        shown to the user in HA (docs tab, update dialog)
+src/                         flat modules, imported as top-level names (`import database`)
+  database.py                SQLite layer: migrations, accounts, categories, transactions, rules
+  balance.py                 Balance: one month's totals per (main, sub) category
+  budget.py                  monthly_balances(), budget_table(), cash_flow(), hidden-category helpers
+  operations.py              import/classify/modify actions shared by CLI and web
+  parser.py                  SEB / Remember / legacy csv parsers
+  category_templates.py      category trees for new accounts (private, family, empty)
+  ha_sensors.py              publishes sensors via the Supervisor API
+  addon.py                   add-on entry point (reads /data/options.json, serves on 8100)
+  version.py                 __version__
+  cli/                       click commands; cli/context.py holds AppContext (db path + account)
+  webapp/                    Flask app factory, Jinja templates, static (style.css, charts.js)
+tests/                       pytest; tests/input_data holds SYNTHETIC fixtures only
+scripts/                     one-off maintenance scripts
+```
+
+## Development
+
+```bash
+python -m venv .venv && . .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+pytest                                           # pythonpath is set in pyproject.toml
+econ --db scratch.db web                         # http://127.0.0.1:8100
+```
+
+Set `ECONOMICS_DB` (or pass `--db`) to a scratch file. Without it the CLI uses the user's
+real database on Windows (OneDrive path in `constants.py`).
+
+Prefer driving the real UI in a browser (Playwright) over trusting tests alone, and test
+through an Ingress-like proxy that strips a prefix and sets `X-Ingress-Path` — the
+Ingress bugs so far were invisible without one. Check both light and dark mode, and a
+390px-wide viewport.
+
+## Conventions
+
+**Never commit personal data.** The repo is public and its history was rewritten once to
+remove bank exports. `originals/` and `*.xls` are git-ignored; test fixtures must be made
+up (Swedish fiction phone numbers 070-1740605..699, "TEST TESTSSON"). Don't put real
+issuers, amounts, balances or IPs in tests, docs or commit messages.
+
+**Versioning.** The version lives in three files that must agree: `config.yaml`,
+`pyproject.toml`, `src/version.py`. Bump all three and add a `CHANGELOG.md` entry for any
+change that should reach the add-on. HA only offers an update when `config.yaml`'s version
+changes on `main`; git tags are not used.
+
+**Changelog voice.** Written for the user: what changed and what it means for them.
+Implementation detail belongs in the commit message / PR.
+
+**Migrations are append-only.** `database.MIGRATIONS` is a list and `PRAGMA user_version`
+is the number applied. Never edit an existing entry — live databases exist at every version.
+SQLite can't alter constraints, so those changes rebuild the table (migration 2 is the
+worked example). Legacy (pre-account) databases have `user_version` 0 and go through the
+whole list; all their data ends up in account 1, *Privat*.
+
+**Everything is account-scoped.** Database functions take `(database_path, account_id, ...)`
+and every query filters on `account_id` — including lookups by id, so one account can never
+read or modify another's rows. Web routes call `load_account()` and resolve category ids
+with `category_by_id()`, which also checks the account.
+
+**Commits** use the GitHub noreply address
+(`66693061+rikpet@users.noreply.github.com`), not a work email. Work on a branch and open a
+PR; CI (`.github/workflows/python-package.yml`) runs pytest on PRs to `main`.
+
+## Design decisions worth knowing
+
+**Category names are stored lower-case** and shown with `.capitalize()`. Comparisons go
+through Python's `lower()` (`py_lower()` is registered on every connection) because
+SQLite's `NOCASE` only folds ASCII, so `'Övrigt' != 'övrigt'` there.
+
+**Expense vs income is `invert_sign`.** Expense categories flip the sign so costs show as
+positive numbers. Unknown or deleted categories count as *Uncategorized* instead of
+raising, so the budget never breaks when categories are edited.
+
+**Derived allowance.** For accounts with `derive_allowance` (Privat), `inkomst/månadspeng` is
+calculated, not imported: `bokföring/inkomst − bokföring/familjekonto − previous month's
+bokföring/familjeutlägg`. `monthly_balances()` wires up the previous month (December of the
+year before for January).
+
+**Hidden categories** (`categories.hidden`) are left out of the budget table, the charts and
+the sensors, including their share of the main category's total. They still exist for
+classification. `econ balance --all` shows them.
+
+**Charts** are drawn client-side by `webapp/static/charts.js` (no dependencies, no CDN)
+from JSON the `charts` route embeds. Colors are CSS variables (`--series-1..8`,
+`--viz-other`, `--viz-context`) so dark mode needs no redraw. The categorical palette order
+is validated for colour-blind safety — don't reorder or invent colors; fold extra series
+into "Other".
+
+**The add-on image** is built by the Supervisor on the Pi from `Dockerfile`
+(`python:3.13-slim`, glibc, so pandas/numpy install as wheels — don't switch to the Alpine
+HA base images). `.dockerignore` is a whitelist. pandas is imported lazily in `parser.py`
+to keep idle memory low.
+
+## Gotchas (each one cost a real bug)
+
+- **Ingress redirects.** Never redirect to `request.url` (absolute, with the add-on's
+  internal host) or to a bare app path. Use `url_for()` or the `here()` / `local_target()`
+  helpers in `webapp/__init__.py`; `IngressMiddleware` sets `SCRIPT_NAME` from
+  `X-Ingress-Path` so generated URLs carry the prefix. A dropped prefix shows up in HA as
+  "400: Bad Request".
+- **Cookies under Ingress** share Home Assistant's origin with every other add-on. Ours
+  are named `economics_*` and scoped to the Ingress path (`cookie_path()`).
+- **Static caching.** Asset links carry `?v={{ app_version }}`; without it browsers keep the
+  old CSS/JS after an add-on update.
+- **iOS auto-zoom** on focused fields under 16px: inputs are forced to 16px on small screens.
+- **Inline `confirm()` in templates**: use `onclick='return confirm({{ msg|tojson }})'`
+  (single-quoted attribute). `|e` inside a double-quoted attribute breaks on apostrophes.
+- **Flash messages contain category names**, so a test asserting a name is *absent* from a
+  page must look at the table markup (`<th scope="row">…`), not the whole body.
+- **The legacy `C:\Users\...` default path** becomes a literal file name in the working
+  directory if old code runs on Linux; it's git-ignored (`*.db`) but delete it if it appears.
+
+## Deployment
+
+Merge to `main` with the version bumped. In HA: Add-on store → ⋮ → Check for updates, then
+update *Economics*; the Pi builds the image (a few minutes). The database lives in the
+add-on's `/data/economics.db` (or the `database_path` option) and is migrated on start.
