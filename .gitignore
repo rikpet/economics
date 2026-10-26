@@ -5,3 +5,7 @@ __pycache__/
 *.db
 *egg-info
 build/
+# Bank exports and other personal data - never commit
+originals/
+*.xls
+!tests/input_data/*.xls
