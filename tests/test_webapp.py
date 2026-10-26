@@ -1,4 +1,5 @@
 import io
+import json
 import re
 import sqlite3
 
@@ -90,7 +91,9 @@ def test_import_classify_and_budget(client, path, changes):
     assert db.get_issuer_classification(path, family, 'PANT').sub_category == 'el'
 
     html = client.get(f'/{family}/?year={trans.date[:4]}').get_data(as_text=True)
-    assert 'Boende' in html and 'El' in html
+    assert 'Boende' in html and '>El<' not in html  # sub-categories are hidden by default
+    html = client.get(f'/{family}/?year={trans.date[:4]}&subs=1').get_data(as_text=True)
+    assert '>El<' in html
 
     html = client.get(f'/{family}/transactions?year={trans.date[:4]}&category=boende&sub=el').get_data(as_text=True)
     assert 'PANT' in html
@@ -177,3 +180,88 @@ def test_static_assets_are_versioned(client):
     from version import __version__
     html = client.get('/1/').get_data(as_text=True)
     assert f'style.css?v={__version__}' in html
+
+
+def test_edit_redirects_back_through_ingress(client, path):
+    """Saving must return to the list under the Ingress prefix, not to the HA root."""
+    db.insert_transaction(path, 1, Transaction('2025-01-01', 'ICA', -1.0, 'SEB'))
+    trans = db.get_transactions(path, 1)[0]
+    prefix = '/api/hassio_ingress/abc123'
+    headers = {'X-Ingress-Path': prefix}
+
+    listing = client.get('/1/transactions?year=2025', headers=headers).get_data(as_text=True)
+    edit_url = re.search(r'href="([^"]*/transactions/%d[^"]*)"' % trans.id, listing).group(1)
+    assert edit_url.startswith(prefix)
+    edit_url = edit_url[len(prefix):].replace('&amp;', '&')
+
+    page = client.get(edit_url, headers=headers).get_data(as_text=True)
+    assert f'href="{prefix}/1/transactions?year=2025"' in page  # Cancel
+
+    response = client.post(edit_url, headers=headers, data={'comment': 'x'})
+    assert response.status_code == 302
+    assert response.headers['Location'] == f'{prefix}/1/transactions?year=2025'
+
+    response = client.post(edit_url, headers=headers, data={'date': 'nope'})
+    assert response.headers['Location'].startswith(f'{prefix}/1/transactions/{trans.id}?')
+
+    # Only local paths are followed.
+    response = client.post(f'/1/transactions/{trans.id}?next=//evil.example/x',
+                           headers=headers, data={'comment': 'y'})
+    assert response.headers['Location'] == f'{prefix}/1/transactions'
+
+
+def test_hide_categories(client, path):
+    db.insert_transaction(path, 1, Transaction('2025-03-01', 'ICA', -100.0, 'SEB', 'mat', 'butik'))
+    db.insert_transaction(path, 1, Transaction('2025-03-02', 'SBO', -40.0, 'SEB', 'mat', 'systembolaget'))
+    db.insert_transaction(path, 1, Transaction('2025-03-03', 'X', -7.0, 'SEB', 'bokföring', 'internöverföring'))
+
+    def budget():
+        return client.get('/1/?year=2025&subs=1').get_data(as_text=True)
+
+    assert '<th scope="row">Bokföring</th>' in budget()
+    client.post('/1/categories/group', data={'main': 'bokföring', 'action': 'hide'})
+    html = budget()
+    assert '<th scope="row">Bokföring</th>' not in html and 'not shown' in html
+
+    sbo = category_id(path, 1, 'mat', 'systembolaget')
+    client.post(f'/1/categories/{sbo}', data={'main': 'mat', 'sub': 'systembolaget', 'kind': 'expense'})
+    assert db.get_category(path, 1, sbo).hidden
+    html = budget()
+    assert '<th scope="row">Systembolaget</th>' not in html
+    # Mat in March now only counts butik.
+    assert re.search(r'category=mat&amp;sub="[^>]*>100<', html)
+
+    client.post('/1/categories/group', data={'main': 'bokföring', 'action': 'show'})
+    assert '<th scope="row">Bokföring</th>' in budget()
+
+    client.post('/1/categories/group', data={'main': 'mat', 'name': 'Livsmedel', 'action': 'rename'})
+    assert db.get_transactions(path, 1, main_category=['livsmedel'])
+    assert 'Livsmedel' in client.get('/1/categories').get_data(as_text=True)
+
+
+def test_charts_page(client, path):
+    db.insert_transaction(path, 1, Transaction('2025-03-01', 'ICA', -100.0, 'SEB', 'mat', 'butik'))
+    db.insert_transaction(path, 1, Transaction('2025-03-25', 'LON', 2000.0, 'SEB', 'inkomst', 'övrigt'))
+    db.insert_transaction(path, 1, Transaction('2024-03-01', 'ICA', -80.0, 'SEB', 'mat', 'butik'))
+    db.insert_transaction(path, 1, Transaction('2025-04-01', 'NEW', -5.0, 'SEB'))
+
+    html = client.get('/1/charts?year=2025').get_data(as_text=True)
+    data = json.loads(re.search(r'id="chart-data">(.*?)</script>', html, re.S).group(1))
+    assert data['flow']['income'][2] == 2000
+    assert data['flow']['expenses'][2] == 100
+    assert data['flow']['expenses'][3] == 5  # unclassified counts as an expense
+    assert data['selected'] == 'mat'
+    assert data['trend']['previous'][2] == 80
+    assert data['subs'][0] == {'label': 'Butik', 'key': 'butik', 'value': 100}
+    assert [s['key'] for s in data['stack']] == ['mat', 'uncategorized']
+    assert 'charts.js?v=' in html
+
+    html = client.get('/1/charts?year=2025&category=inkomst').get_data(as_text=True)
+    data = json.loads(re.search(r'id="chart-data">(.*?)</script>', html, re.S).group(1))
+    assert data['selected'] == 'inkomst' and data['trend']['current'][2] == 2000
+
+    assert client.get('/1/charts?year=2030').status_code == 200
+    db.set_category_hidden(path, 1, True, main_category='mat')
+    html = client.get('/1/charts?year=2025').get_data(as_text=True)
+    data = json.loads(re.search(r'id="chart-data">(.*?)</script>', html, re.S).group(1))
+    assert 'mat' not in [t['key'] for t in data['totals']]

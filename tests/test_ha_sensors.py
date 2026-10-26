@@ -78,3 +78,16 @@ def test_publish_posts_to_supervisor(path, monkeypatch):
     assert 'http://supervisor/core/api/states/sensor.economics_privat_mat' in urls
     assert all(auth == 'Bearer secret' for _, auth, _ in sent)
     assert all('state' in body and 'attributes' in body for _, _, body in sent)
+
+
+def test_hidden_categories_are_not_published(path):
+    db.insert_transaction(path, 1, Transaction('2025-03-02', 'ICA', -250.0, 'SEB', 'mat', 'butik'))
+    db.insert_transaction(path, 1, Transaction('2025-03-02', 'SBO', -50.0, 'SEB', 'mat', 'systembolaget'))
+    db.set_category_hidden(path, 1, True, main_category='bokföring')
+    sbo = next(c for c in db.get_categories(path, 1) if c.sub_category == 'systembolaget')
+    db.set_category_hidden(path, 1, True, category_id=sbo.id)
+
+    states = account_states(path, db.get_account(path, 1), now=datetime(2025, 3, 15))
+    assert 'sensor.economics_privat_bokforing' not in states
+    assert states['sensor.economics_privat_mat']['state'] == 250
+    assert 'systembolaget' not in states['sensor.economics_privat_mat']['attributes']['sub_categories']

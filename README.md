@@ -35,7 +35,7 @@ econ account rename Familj "Familjen"
 
 econ --account Familj trans add originals/seb_jan.csv SEB
 econ -a Familj trans classify
-econ -a Familj balance --year 2026 --show-sub-category
+econ -a Familj balance --year 2026 --show-sub-category   # --all includes hidden categories
 econ -a Familj category list
 econ -a Familj category add boende el
 econ -a Familj issuer list

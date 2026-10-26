@@ -186,7 +186,13 @@ def _migration_2_accounts(c: sqlite3.Cursor):
     _seed_categories(c, 1, extra, start_position=len(PRIVATE))
 
 
-MIGRATIONS = [_migration_1_initial, _migration_2_accounts]
+def _migration_3_hidden_categories(c: sqlite3.Cursor):
+    """Categories can be hidden from the budget, charts and sensors."""
+    c.execute('ALTER TABLE categories ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0')
+
+
+# Append-only: users have live databases at every version.
+MIGRATIONS = [_migration_1_initial, _migration_2_accounts, _migration_3_hidden_categories]
 
 
 def _seed_categories(c: sqlite3.Cursor, account_id: int, template, start_position: int = 0):
@@ -336,7 +342,8 @@ def delete_account(database_path: str, account_id: int):
 
 def _category(row: sqlite3.Row) -> Category:
     return Category(id=row['id'], main_category=row['main_category'],
-                    sub_category=row['sub_category'], invert_sign=bool(row['invert_sign']))
+                    sub_category=row['sub_category'], invert_sign=bool(row['invert_sign']),
+                    hidden=bool(row['hidden']))
 
 
 def get_categories(database_path: str, account_id: int) -> list[Category]:
@@ -381,7 +388,7 @@ def add_category(database_path: str, account_id: int, main_category: str, sub_ca
 
 
 def update_category(database_path: str, account_id: int, category_id: int, main_category: str,
-                    sub_category: str, invert_sign: bool):
+                    sub_category: str, invert_sign: bool, hidden: bool | None = None):
     """Rename and/or change a category. Transactions and issuer rules follow a rename."""
     main_category = main_category.strip().lower()
     sub_category = sub_category.strip().lower()
@@ -396,6 +403,9 @@ def update_category(database_path: str, account_id: int, category_id: int, main_
             conn.execute('UPDATE categories SET main_category = ?, sub_category = ?, '
                          'invert_sign = ? WHERE id = ?',
                          (main_category, sub_category, int(invert_sign), category_id))
+            if hidden is not None:
+                conn.execute('UPDATE categories SET hidden = ? WHERE id = ?',
+                             (int(hidden), category_id))
         except sqlite3.IntegrityError as e:
             raise ValueError(f'Category {main_category}/{sub_category} already exists.') from e
         for table in ('transactions', 'issuer_classifications'):
@@ -404,6 +414,42 @@ def update_category(database_path: str, account_id: int, category_id: int, main_
                          'AND py_lower(sub_category) = ?',
                          (main_category, sub_category, account_id,
                           old['main_category'], old['sub_category']))
+
+
+def set_category_hidden(database_path: str, account_id: int, hidden: bool,
+                        category_id: int | None = None, main_category: str | None = None):
+    """Hide or show one category, or every sub-category of a main category."""
+    with _connect(database_path) as conn:
+        if category_id is not None:
+            conn.execute('UPDATE categories SET hidden = ? WHERE account_id = ? AND id = ?',
+                         (int(hidden), account_id, category_id))
+        elif main_category is not None:
+            conn.execute('UPDATE categories SET hidden = ? WHERE account_id = ? '
+                         'AND main_category = ?',
+                         (int(hidden), account_id, main_category.strip().lower()))
+
+
+def rename_main_category(database_path: str, account_id: int, old: str, new: str):
+    """Rename a main category with all its sub-categories, transactions and issuer rules."""
+    old = old.strip().lower()
+    new = new.strip().lower()
+    if not new:
+        raise ValueError('Main category must not be empty.')
+    if new == old:
+        return
+    with _connect(database_path) as conn:
+        clash = conn.execute('SELECT a.sub_category FROM categories a JOIN categories b '
+                             'ON a.sub_category = b.sub_category AND b.account_id = a.account_id '
+                             'WHERE a.account_id = ? AND a.main_category = ? '
+                             'AND b.main_category = ?', (account_id, old, new)).fetchone()
+        if clash:
+            raise ValueError(f'{new}/{clash[0]} already exists.')
+        conn.execute('UPDATE categories SET main_category = ? '
+                     'WHERE account_id = ? AND main_category = ?', (new, account_id, old))
+        for table in ('transactions', 'issuer_classifications'):
+            conn.execute(f'UPDATE {table} SET main_category = ? '
+                         'WHERE account_id = ? AND py_lower(main_category) = ?',
+                         (new, account_id, old))
 
 
 def category_usage(database_path: str, account_id: int, main_category: str,

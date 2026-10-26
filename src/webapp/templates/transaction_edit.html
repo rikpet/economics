@@ -17,7 +17,7 @@
     <label>Comment <input type="text" name="comment" value="{{ t.comment or '' }}"></label>
     <div class="actions">
       <button type="submit">Save</button>
-      <a href="{{ next or url_for('transactions', account_id=account.id) }}" class="button secondary">Cancel</a>
+      <a href="{{ back }}" class="button secondary">Cancel</a>
     </div>
   </form>
   {% if t.modification_log %}

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Charts {{ year }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Charts {{ year }}</h1>
+  <form method="get" class="inline">
+    <label class="visually-hidden" for="year">Year</label>
+    <select id="year" name="year" onchange="this.form.submit()">
+      {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+    </select>
+    <label class="visually-hidden" for="category">Category</label>
+    <select id="category" name="category" onchange="this.form.submit()">
+      {% for r in mains %}<option value="{{ r.main_category }}" {% if r.main_category == selected %}selected{% endif %}>{{ r.label }}</option>{% endfor %}
+    </select>
+    <noscript><button type="submit">Show</button></noscript>
+  </form>
+</div>
+
+<div class="stat-row">
+  <div class="stat"><div class="stat-label">Income{% if elapsed and elapsed < 12 %}, year to date{% endif %}</div><div class="stat-value">{{ income|money }} kr</div></div>
+  <div class="stat"><div class="stat-label">Expenses{% if elapsed and elapsed < 12 %}, year to date{% endif %}</div><div class="stat-value">{{ expenses|money }} kr</div></div>
+  <div class="stat"><div class="stat-label">Net</div><div class="stat-value">{{ (income - expenses)|money }} kr</div></div>
+  <div class="stat"><div class="stat-label">Average expenses per month</div><div class="stat-value">{{ average|money }} kr</div></div>
+</div>
+
+<div class="chart-grid">
+  <section class="card chart-card">
+    <h2>Income and expenses per month</h2>
+    <div class="chart" id="chart-flow"></div>
+  </section>
+
+  <section class="card chart-card">
+    <h2>Expenses per month by category</h2>
+    <div class="chart" id="chart-stack"></div>
+  </section>
+
+  <section class="card chart-card">
+    <h2>Expenses by category, {{ year }}</h2>
+    <p class="hint">Click a category to look closer at it below.</p>
+    <div class="chart" id="chart-totals"></div>
+  </section>
+
+  {% if chart.trend %}
+  <section class="card chart-card">
+    <h2>{{ chart.trend.name }} per month, {{ year }}{% if chart.trend.previous %} and {{ year - 1 }}{% endif %}</h2>
+    <div class="chart" id="chart-trend"></div>
+    <h2 class="sub-head">{{ chart.trend.name }} by sub-category, {{ year }}</h2>
+    <div class="chart" id="chart-subs"></div>
+  </section>
+  {% endif %}
+</div>
+
+<p class="hint">Expenses are shown as positive costs. Unclassified transactions count as expenses.
+  {% if hidden_count %}{{ hidden_count }} hidden {{ 'category is' if hidden_count == 1 else 'categories are' }} left out (<a href="{{ url_for('categories', account_id=account.id) }}">manage</a>).{% endif %}
+  The numbers are also in the <a href="{{ url_for('budget', account_id=account.id, year=year, subs=1) }}">budget table</a>.</p>
+
+<script type="application/json" id="chart-data">{{ chart|tojson }}</script>
+<script src="{{ url_for('static', filename='charts.js', v=app_version) }}"></script>
+<script>
+(function () {
+  const data = JSON.parse(document.getElementById("chart-data").textContent);
+  const C = window.EconomicsCharts;
+  const months = data.months;
+  const full = months.map((m) => `${m} ${data.year}`);
+  const base = location.pathname;
+
+  C.columns(document.getElementById("chart-flow"), {
+    label: "Income and expenses per month", labels: months, fullLabels: full,
+    series: [
+      { name: "Income", color: "--series-1", values: data.flow.income },
+      { name: "Expenses", color: "--series-2", values: data.flow.expenses },
+    ],
+  });
+
+  C.columns(document.getElementById("chart-stack"), {
+    label: "Expenses per month by category", labels: months, fullLabels: full, stacked: true,
+    series: data.stack.map((s, i) => ({
+      name: s.name, values: s.values, color: s.other ? "--viz-other" : `--series-${i + 1}`,
+    })),
+  });
+
+  C.hbars(document.getElementById("chart-totals"), {
+    label: "Expenses by category", valueLabel: `Expenses ${data.year}`, selected: data.selected,
+    items: data.totals.map((t) => ({
+      key: t.key, label: t.label, value: t.value,
+      href: `${base}?year=${data.year}&category=${encodeURIComponent(t.key)}`,
+    })),
+  });
+
+  if (data.trend) {
+    C.lines(document.getElementById("chart-trend"), {
+      label: `${data.trend.name} per month`, labels: months,
+      fullLabels: months,
+      series: [
+        { name: String(data.year), color: "--series-1", values: data.trend.current },
+        { name: String(data.previousYear), color: "--viz-context", values: data.trend.previous },
+      ].filter((s) => s.values.length),
+    });
+    const tx = base.replace(/charts$/, "transactions");
+    C.hbars(document.getElementById("chart-subs"), {
+      label: `${data.trend.name} by sub-category`, valueLabel: String(data.year),
+      items: data.subs.map((s) => ({
+        label: s.label, value: s.value,
+        href: `${tx}?year=${data.year}&category=${encodeURIComponent(data.selected)}&sub=${encodeURIComponent(s.key)}`,
+      })),
+    });
+  }
+})();
+</script>
+{% endblock %}

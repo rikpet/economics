@@ -1,9 +1,9 @@
 from datetime import datetime
 import click
 
-from budget import budget_table, monthly_balances
+from budget import budget_table, hidden_categories, monthly_balances
 from cli.context import AppContext, pass_app
-from database import get_transactions
+from database import get_categories, get_transactions
 from printout import generate_table
 from utils import month_no_to_name, month_to_date
 
@@ -12,15 +12,17 @@ from utils import month_no_to_name, month_to_date
 @click.option('--year', type=int, default=datetime.now().year, help="Year for the budget summary.")
 @click.option('--month', type=int, default=None, help="Month for the budget summary.")
 @click.option('--category', default=None, multiple=True, help="Category for the budget summary.")
+@click.option('--all', 'show_all', is_flag=True, help="Include categories hidden from the budget.")
 @pass_app
-def balance(app: AppContext, show_sub_category, year, month, category: tuple[str]):
+def balance(app: AppContext, show_sub_category, year, month, category: tuple[str], show_all: bool):
     """Show budget summary."""
 
     balances = monthly_balances(app.database_path, app.account, year,
                                 [month] if month is not None else None)
 
     try:
-        rows = budget_table(balances, show_sub_category, list(category) or None)
+        hidden = set() if show_all else hidden_categories(get_categories(app.database_path, app.account_id))
+        rows = budget_table(balances, show_sub_category, list(category) or None, hidden)
     except ValueError as e:
         raise click.ClickException(str(e))
 

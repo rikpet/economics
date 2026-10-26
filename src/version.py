@@ -1,2 +1,2 @@
 # Keep in sync with config.yaml and pyproject.toml.
-__version__ = "2.0.0"
+__version__ = "2.1.0"

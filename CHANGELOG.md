@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.0
+
+- New **Charts** page: income and expenses per month, expenses per month by category,
+  expenses per category for the year, and a closer look at one category compared with the
+  year before. Hover or tap a chart to see the amounts.
+- Categories can be hidden from the budget, e.g. Bokföring or internal transfers. Hide a whole
+  group or single sub-categories under **Categories**. Hidden categories are also left out
+  of the charts and the Home Assistant sensors.
+- The Categories page is easier to read: columns line up, a group can be renamed in one go,
+  and a sub-category is moved to another group with a drop-down.
+- The budget shows main categories only by default. Use *Show sub-categories* for the details.
+- Saving an edited transaction no longer ends in "400: Bad Request".
+
 ## 2.0.0
 
 - Runs as a Home Assistant add-on with a web interface (Ingress) and budget sensors.

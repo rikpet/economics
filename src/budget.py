@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 import database as db
-from app_types import Account
+from app_types import Account, Category
 from balance import Balance
 
 
@@ -51,17 +51,84 @@ class BudgetRow:
         return self.sub_category is not None
 
 
+def hidden_categories(categories: list[Category]) -> set[tuple[str, str]]:
+    return {(c.main_category, c.sub_category) for c in categories if c.hidden}
+
+
+def visible_subs(balance: Balance, main: str, hidden: set[tuple[str, str]]) -> list[str]:
+    return [sub for sub in balance.sub_categories(main) if (main, sub) not in hidden]
+
+
+def main_value(balance: Balance, main: str, hidden: set[tuple[str, str]]) -> float:
+    """The main category's value, without its hidden sub-categories."""
+    value = balance.get(main)  # also derives inkomst/månadspeng
+    subs = visible_subs(balance, main, hidden)
+    if len(subs) < len(balance.sub_categories(main)):
+        value = sum(balance.get_sub_category(main, sub) for sub in subs)
+    return value
+
+
 def budget_table(balances: dict[int, Balance], show_sub_category: bool = False,
-                 categories: list[str] | None = None) -> list[BudgetRow]:
-    """Rows of (category, value per month) in the order of the category tree."""
+                 categories: list[str] | None = None,
+                 hidden: set[tuple[str, str]] | None = None) -> list[BudgetRow]:
+    """Rows of (category, value per month) in the order of the category tree.
+
+    Hidden sub-categories are left out, and so is their share of the main category. A main
+    category whose sub-categories are all hidden is left out entirely, and Uncategorized is
+    only shown when it has transactions.
+    """
+    hidden = hidden or set()
     first = next(iter(balances.values()))
     rows: list[BudgetRow] = []
     for main in (categories or first.categories()):
         main = main.lower()
-        rows.append(BudgetRow(main.capitalize(), main, None,
-                              [b.get(main) for b in balances.values()]))
+        subs = visible_subs(first, main, hidden)
+        if not subs:
+            continue
+
+        values = [main_value(b, main, hidden) for b in balances.values()]
+        if main == "uncategorized" and not any(values):
+            continue
+
+        rows.append(BudgetRow(main.capitalize(), main, None, values))
         if show_sub_category:
-            for sub in first.sub_categories(main):
+            for sub in subs:
                 rows.append(BudgetRow(sub.capitalize(), main, sub,
                                       [b.get_sub_category(main, sub) for b in balances.values()]))
     return rows
+
+
+@dataclass
+class CashFlow:
+    """Income and expenses per month, for charts. Hidden categories are left out."""
+    income: list[float]
+    expenses: list[float]
+    expenses_by_main: dict[str, list[float]]
+
+
+def cash_flow(balances: dict[int, Balance], categories: list[Category]) -> CashFlow:
+    for b in balances.values():
+        if b.derive_allowance:
+            b.get("inkomst")  # sets the derived inkomst/månadspeng
+
+    income = [0.0] * len(balances)
+    expenses = [0.0] * len(balances)
+    by_main: dict[str, list[float]] = {}
+    for c in categories:
+        if c.hidden:
+            continue
+        main, sub = c.main_category.lower(), c.sub_category.lower()
+        for i, b in enumerate(balances.values()):
+            value = b.get_sub_category(main, sub)
+            if c.invert_sign:  # expense, already a positive cost
+                expenses[i] += value
+                by_main.setdefault(main, [0.0] * len(balances))[i] += value
+            else:
+                income[i] += value
+
+    # Unclassified transactions are mostly purchases: count them as expenses (positive cost).
+    uncategorized = [-b.get("uncategorized") for b in balances.values()]
+    if any(uncategorized):
+        by_main["uncategorized"] = uncategorized
+        expenses = [e + u for e, u in zip(expenses, uncategorized)]
+    return CashFlow(income, expenses, by_main)

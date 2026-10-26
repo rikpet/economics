@@ -37,6 +37,13 @@ under **Categories**. Switch account with the selector at the top.
 2. **Classify**: choose a category for each new transaction. Tick *Remember for this
    issuer* to classify that issuer automatically from now on.
 3. **Budget**: amounts per month and category. Click an amount to see its transactions.
+4. **Charts**: income and expenses per month, the spread over categories, and one category
+   compared with the year before. Click a category bar to look closer at it.
+
+Under **Categories** you can hide categories you don't want in the budget, such as
+Bokföring or internal transfers: a whole group with *Hide from budget*, or a single
+sub-category by unticking *Show*. Hidden categories keep their transactions but are left
+out of the budget, the charts and the sensors.
 
 ## Sensors
 
@@ -45,7 +52,7 @@ and `<category>` are lower-case, with å/ä/ö written as a/a/o):
 
 | Entity | State | Attributes |
 | --- | --- | --- |
-| `sensor.economics_<account>_<category>` | This month's amount for the main category (expenses as positive cost) | `previous_month`, `year_to_date`, `sub_categories`, `month` |
+| `sensor.economics_<account>_<category>` | This month's amount for the main category (expenses as positive cost). Not published for hidden categories. | `previous_month`, `year_to_date`, `sub_categories`, `month` |
 | `sensor.economics_<account>_unclassified` | Number of unclassified transactions | |
 | `sensor.economics_<account>_latest_transaction` | Date of the latest transaction | |
 
