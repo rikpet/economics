@@ -43,3 +43,4 @@ class Category:
     main_category: str
     sub_category: str
     invert_sign: bool = True
+    hidden: bool = False

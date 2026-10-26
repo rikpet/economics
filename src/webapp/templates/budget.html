@@ -38,5 +38,7 @@
 </table>
 </div>
 <p class="hint">Expense categories are shown as positive costs. Click an amount to see its transactions.
+{% if hidden_count %}{{ hidden_count }} hidden {{ 'category is' if hidden_count == 1 else 'categories are' }} not shown (<a href="{{ url_for('categories', account_id=account.id) }}">manage</a>).{% endif %}
+See also the <a href="{{ url_for('charts', account_id=account.id, year=year) }}">charts</a>.
 {% if account.derive_allowance %}<br>Inkomst › Månadspeng is calculated as Bokföring › Inkomst − Bokföring › Familjekonto − last month's Bokföring › Familjeutlägg.{% endif %}</p>
 {% endblock %}

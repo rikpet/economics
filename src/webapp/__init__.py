@@ -25,11 +25,12 @@ import database as db
 import operations
 from version import __version__
 from app_types import Account, Category, IssuerClassification
-from budget import budget_table, monthly_balances
+from budget import budget_table, cash_flow, hidden_categories, monthly_balances
 from category_templates import TEMPLATES
 from utils import month_to_date
 
 ACCOUNT_COOKIE = "economics_account"
+STACK_SERIES = 7  # colored categories in the stacked chart; the rest are "Other"
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -112,6 +113,24 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
     def year_arg() -> int:
         return request.args.get("year", type=int) or datetime.now().year
 
+    def here() -> str:
+        """The current page as a relative URL that includes the Ingress prefix.
+
+        request.url is absolute and uses the Host the add-on was reached on, which under
+        Ingress is the add-on's internal address, not one the browser can reach.
+        """
+        query = request.query_string.decode()
+        return request.script_root + request.path + (f"?{query}" if query else "")
+
+    def local_target(value: str | None, default: str) -> str:
+        """Resolve a `next` parameter (an app path like /1/transactions?year=2025)."""
+        if value and value.startswith("/") and not value.startswith("//") and "\\" not in value:
+            return request.script_root + value
+        return default
+
+    def year_options(account_id: int) -> list[int]:
+        return sorted(set(db.get_years(dbp(), account_id)) | {datetime.now().year}, reverse=True)
+
     @app.context_processor
     def inject():
         return {
@@ -146,11 +165,12 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
     def budget(account_id: int):
         account = load_account(account_id)
         year = year_arg()
-        show_subs = request.args.get("subs", "1") == "1"
+        show_subs = request.args.get("subs", "0") == "1"
+        categories = db.get_categories(dbp(), account_id)
+        hidden = hidden_categories(categories)
         balances = monthly_balances(dbp(), account, year)
-        rows = budget_table(balances, show_sub_category=show_subs)
-        years = sorted(set(db.get_years(dbp(), account_id)) | {datetime.now().year},
-                       reverse=True)
+        rows = budget_table(balances, show_sub_category=show_subs, hidden=hidden)
+        years = year_options(account_id)
 
         @after_this_request
         def remember(response):
@@ -160,7 +180,83 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
 
         return render_template(
             "budget.html", rows=rows, year=year, years=years, show_subs=show_subs,
+            hidden_count=len(hidden),
             unclassified=db.count_unclassified_transactions(dbp(), account_id),
+        )
+
+    # ---------------------------------------------------------------------------------
+    # Charts
+    # ---------------------------------------------------------------------------------
+
+    @app.get("/<int:account_id>/charts")
+    def charts(account_id: int):
+        account = load_account(account_id)
+        year = year_arg()
+        now = datetime.now()
+        # Months that have happened; the rest of the year is not averaged over.
+        elapsed = 12 if year < now.year else (now.month if year == now.year else 0)
+
+        categories = db.get_categories(dbp(), account_id)
+        hidden = hidden_categories(categories)
+        balances = monthly_balances(dbp(), account, year)
+        flow = cash_flow(balances, categories)
+        rows = budget_table(balances, show_sub_category=True, hidden=hidden)
+        previous_rows = budget_table(monthly_balances(dbp(), account, year - 1),
+                                     show_sub_category=True, hidden=hidden)
+
+        order = [r.main_category for r in rows if not r.is_sub]
+        totals = sorted(((main, sum(values)) for main, values in flow.expenses_by_main.items()),
+                        key=lambda item: -item[1])
+
+        # Stacked columns: the largest categories get a color, in category-tree order so a
+        # category keeps its color when the ranking shifts; the rest fold into "Other".
+        top = sorted((main for main, total in totals[:STACK_SERIES] if total > 0),
+                     key=lambda main: order.index(main) if main in order else len(order))
+        stack = [{"key": main, "name": main.capitalize(), "values": flow.expenses_by_main[main]}
+                 for main in top]
+        rest = [main for main, _ in totals
+                if main not in top and any(flow.expenses_by_main[main])]
+        if rest:
+            stack.append({"key": "other", "name": "Other", "other": True,
+                          "values": [sum(flow.expenses_by_main[m][i] for m in rest)
+                                     for i in range(12)]})
+
+        selected = request.args.get("category") or (totals[0][0] if totals else None)
+        if selected not in order:
+            selected = order[0] if order else None
+        trend = subs = None
+        if selected:
+            main_row = next(r for r in rows if r.main_category == selected and not r.is_sub)
+            previous_row = next((r for r in previous_rows
+                                 if r.main_category == selected and not r.is_sub), None)
+            trend = {
+                "name": main_row.label,
+                "current": main_row.values[:elapsed] if elapsed else [],
+                # Left out when the previous year has nothing to compare with.
+                "previous": previous_row.values if previous_row and any(previous_row.values) else [],
+            }
+            subs = sorted(({"label": r.label, "key": r.sub_category, "value": r.total} for r in rows
+                           if r.is_sub and r.main_category == selected and r.total),
+                          key=lambda item: -item["value"])
+
+        income = sum(flow.income[:elapsed or 12])
+        expenses = sum(flow.expenses[:elapsed or 12])
+        chart_data = {
+            "months": MONTHS,
+            "year": year,
+            "previousYear": year - 1,
+            "flow": {"income": flow.income, "expenses": flow.expenses},
+            "stack": stack,
+            "totals": [{"key": m, "label": m.capitalize(), "value": v} for m, v in totals],
+            "selected": selected,
+            "trend": trend,
+            "subs": subs,
+        }
+        return render_template(
+            "charts.html", year=year, years=year_options(account_id), chart=chart_data,
+            selected=selected, mains=[r for r in rows if not r.is_sub],
+            income=income, expenses=expenses, elapsed=elapsed,
+            average=expenses / elapsed if elapsed else 0, hidden_count=len(hidden),
         )
 
     # ---------------------------------------------------------------------------------
@@ -197,7 +293,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         if request.args.get("sort", "desc") == "desc":
             rows.reverse()
 
-        years = sorted(set(db.get_years(dbp(), account_id)) | {datetime.now().year}, reverse=True)
+        years = year_options(account_id)
         return render_template(
             "transactions.html", rows=rows, year=year, years=years, month=month,
             main=main, sub=sub, origin=origin, q=search, sort=request.args.get("sort", "desc"),
@@ -220,7 +316,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
                     date = datetime.strptime(request.form["date"], "%Y-%m-%d")
                 except ValueError:
                     flash("Invalid date.", "error")
-                    return redirect(request.url)
+                    return redirect(here())
             changed = operations.modify_transaction(
                 dbp(), account_id, transaction_id,
                 category.main_category if category else None,
@@ -233,11 +329,13 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
                     dbp(), account_id, transaction_id, category.main_category,
                     category.sub_category, remember_issuer=True)
             flash("Transaction saved." if changed else "Nothing changed.", "ok")
-            return redirect(request.args.get("next") or url_for("transactions", account_id=account_id))
+            return redirect(local_target(request.args.get("next"),
+                                         url_for("transactions", account_id=account_id)))
 
         return render_template("transaction_edit.html", t=trans,
                                groups=category_choices(account_id),
-                               next=request.args.get("next", ""))
+                               back=local_target(request.args.get("next"),
+                                                 url_for("transactions", account_id=account_id)))
 
     # ---------------------------------------------------------------------------------
     # Import
@@ -250,7 +348,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
             upload = request.files.get("file")
             if upload is None or not upload.filename:
                 flash("Choose a file to import.", "error")
-                return redirect(request.url)
+                return redirect(here())
 
             origin = request.form.get("origin", "auto")
             suffix = os.path.splitext(upload.filename)[1].lower()
@@ -264,7 +362,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
                 result = operations.import_file(dbp(), account_id, path, origin)
             except Exception as e:  # parsing errors come in many shapes from csv/pandas
                 flash(f"Could not import {upload.filename} as {origin}: {e}", "error")
-                return redirect(request.url)
+                return redirect(here())
             finally:
                 os.remove(path)
 
@@ -273,7 +371,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
                   f"skipped {result.skipped_duplicates} duplicates.", "ok")
             if result.added > result.classified:
                 return redirect(url_for("classify", account_id=account_id))
-            return redirect(request.url)
+            return redirect(here())
 
         return render_template("import.html", origins=list(operations.ORIGINS))
 
@@ -394,8 +492,26 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
             else:
                 db.update_category(dbp(), account_id, category_id,
                                    request.form.get("main", ""), request.form.get("sub", ""),
-                                   invert_sign=request.form.get("kind", "expense") == "expense")
+                                   invert_sign=request.form.get("kind", "expense") == "expense",
+                                   hidden=not request.form.get("visible"))
                 flash("Category saved.", "ok")
+        except ValueError as e:
+            flash(str(e), "error")
+        return redirect(url_for("categories", account_id=account_id))
+
+    @app.post("/<int:account_id>/categories/group")
+    def update_category_group(account_id: int):
+        load_account(account_id)
+        main = request.form.get("main", "")
+        action = request.form.get("action")
+        try:
+            if action in ("hide", "show"):
+                db.set_category_hidden(dbp(), account_id, action == "hide", main_category=main)
+                flash(f"{main.capitalize()} is {'hidden from' if action == 'hide' else 'shown in'} "
+                      "the budget.", "ok")
+            else:
+                db.rename_main_category(dbp(), account_id, main, request.form.get("name", ""))
+                flash("Category renamed.", "ok")
         except ValueError as e:
             flash(str(e), "error")
         return redirect(url_for("categories", account_id=account_id))

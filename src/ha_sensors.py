@@ -14,7 +14,7 @@ from datetime import datetime
 
 import database as db
 from app_types import Account
-from budget import monthly_balances
+from budget import hidden_categories, main_value, monthly_balances, visible_subs
 
 log = logging.getLogger(__name__)
 
@@ -38,9 +38,14 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
     else:
         previous = monthly_balances(database_path, account, now.year - 1, [12])[12]
 
+    hidden = hidden_categories(db.get_categories(database_path, account.id))
+
     states: dict[str, dict] = {}
     for main in current.categories():
-        value = current.get(main)
+        subs = visible_subs(current, main, hidden)
+        if not subs:  # hidden from the budget
+            continue
+        value = main_value(current, main, hidden)
         states[f"{prefix}_{slugify(main)}"] = {
             "state": round(value, 2),
             "attributes": {
@@ -51,11 +56,11 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
                 "icon": "mdi:cash",
                 "account": account.name,
                 "month": now.strftime("%Y-%m"),
-                "previous_month": round(previous.get(main), 2),
-                "year_to_date": round(sum(b.get(main) for m, b in this_year.items()
-                                          if m <= now.month), 2),
+                "previous_month": round(main_value(previous, main, hidden), 2),
+                "year_to_date": round(sum(main_value(b, main, hidden)
+                                          for m, b in this_year.items() if m <= now.month), 2),
                 "sub_categories": {sub: round(current.get_sub_category(main, sub), 2)
-                                   for sub in current.sub_categories(main)},
+                                   for sub in subs},
             },
         }
 

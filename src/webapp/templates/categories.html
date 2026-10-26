@@ -2,7 +2,9 @@
 {% block title %}Categories{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Categories for {{ account.name }}</h1></div>
-<p class="hint">Renaming a category also updates the transactions and issuer rules that use it. Removing one leaves its transactions under “Uncategorized” in the budget.</p>
+<p class="hint">Renaming a category also updates the transactions and issuer rules that use it.
+  Hidden categories are left out of the budget, the charts and the Home Assistant sensors, but keep their transactions.
+  Removing a category leaves its transactions under “Uncategorized”.</p>
 <div class="card">
   <h2>Add category</h2>
   <form method="post" action="{{ url_for('add_category', account_id=account.id) }}" class="row-form">
@@ -14,23 +16,40 @@
   </form>
 </div>
 {% for m, cats in groups %}
-<div class="card">
-  <h2>{{ m|capitalize }}</h2>
-  <div class="form-list">
-    {% for c in cats %}
-          <form method="post" action="{{ url_for('update_category', account_id=account.id, category_id=c.id) }}" class="row-form compact cat-row">
-            <input type="text" name="main" value="{{ c.main_category }}" required aria-label="Main category">
-            <input type="text" name="sub" value="{{ c.sub_category }}" required aria-label="Sub category">
-            <select name="kind" aria-label="Type">
-              <option value="expense" {% if c.invert_sign %}selected{% endif %}>Expense</option>
-              <option value="income" {% if not c.invert_sign %}selected{% endif %}>Income</option>
-            </select>
-            <span class="num muted" title="Transactions using this category">{{ usage[c.id] }} used</span>
-            <button type="submit" name="action" value="save" class="secondary">Save</button>
-            <button type="submit" name="action" value="delete" class="danger" onclick='return confirm({{ ("Remove " ~ c.main_category ~ " › " ~ c.sub_category ~ "?" ~ ((" " ~ usage[c.id] ~ " transactions will count as uncategorized.") if usage[c.id] else ""))|tojson }})'>Remove</button>
-          </form>
-    {% endfor %}
+{% set all_hidden = cats|selectattr('hidden')|list|length == cats|length %}
+<div class="card{% if all_hidden %} is-hidden{% endif %}">
+  <div class="cat-group-head">
+    <h2>{{ m|capitalize }}{% if all_hidden %} <span class="muted">· hidden</span>{% endif %}</h2>
+    <form method="post" action="{{ url_for('update_category_group', account_id=account.id) }}" class="row-form compact">
+      <input type="hidden" name="main" value="{{ m }}">
+      <input type="text" name="name" value="{{ m }}" required aria-label="Rename {{ m }}">
+      <button type="submit" name="action" value="rename" class="secondary">Rename</button>
+      {% if all_hidden %}
+      <button type="submit" name="action" value="show" class="secondary">Show in budget</button>
+      {% else %}
+      <button type="submit" name="action" value="hide" class="secondary">Hide from budget</button>
+      {% endif %}
+    </form>
   </div>
+  <div class="cat-grid-row cat-grid-head" aria-hidden="true">
+    <span>Sub category</span><span>Group</span><span>Type</span><span>Visible</span><span class="num">Transactions</span><span></span><span></span>
+  </div>
+  {% for c in cats %}
+  <form method="post" action="{{ url_for('update_category', account_id=account.id, category_id=c.id) }}" class="cat-grid-row{% if c.hidden %} is-hidden{% endif %}">
+    <input type="text" name="sub" value="{{ c.sub_category }}" required aria-label="Sub category">
+    <select name="main" aria-label="Group (main category)">
+      {% for other, _ in groups %}<option value="{{ other }}" {% if other == c.main_category %}selected{% endif %}>{{ other|capitalize }}</option>{% endfor %}
+    </select>
+    <select name="kind" aria-label="Type">
+      <option value="expense" {% if c.invert_sign %}selected{% endif %}>Expense</option>
+      <option value="income" {% if not c.invert_sign %}selected{% endif %}>Income</option>
+    </select>
+    <label class="check"><input type="checkbox" name="visible" value="1" {% if not c.hidden %}checked{% endif %}> Show</label>
+    <span class="num muted">{{ usage[c.id] }}</span>
+    <button type="submit" name="action" value="save" class="secondary">Save</button>
+    <button type="submit" name="action" value="delete" class="danger" onclick='return confirm({{ ("Remove " ~ c.main_category ~ " › " ~ c.sub_category ~ "?" ~ ((" " ~ usage[c.id] ~ " transactions will count as uncategorized.") if usage[c.id] else ""))|tojson }})'>Remove</button>
+  </form>
+  {% endfor %}
 </div>
 {% else %}
 <div class="card empty">No categories yet. Add one above.</div>
