@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Accounts{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Accounts</h1></div>
+<p class="hint">Each account has its own transactions, issuer rules and categories, e.g. one for the family economy and one for your private.</p>
+
+<div class="card">
+  <div class="form-list">
+    {% for a in accounts %}
+          <form method="post" action="{{ url_for('update_account', account_id=a.id) }}" class="row-form compact">
+            <input type="text" name="name" value="{{ a.name }}" required aria-label="Name">
+            <label class="check"><input type="checkbox" name="derive_allowance" value="1" {% if a.derive_allowance %}checked{% endif %}> Derive Inkomst › Månadspeng</label>
+            <span class="num muted">{{ counts[a.id] }} transactions</span>
+            <button type="submit" name="action" value="save" class="secondary">Save</button>
+            <a class="button secondary" href="{{ url_for('budget', account_id=a.id) }}">Open</a>
+            {% if not counts[a.id] and accounts|length > 1 %}
+            <button type="submit" name="action" value="delete" class="danger" onclick='return confirm({{ ("Delete " ~ a.name ~ " with its categories and rules?")|tojson }})'>Delete</button>
+            {% endif %}
+          </form>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>New account</h2>
+  <form method="post" action="{{ url_for('create_account') }}" class="row-form">
+    <input type="text" name="name" placeholder="Name, e.g. Familj" required>
+    <label>Categories
+      <select name="template">
+        <option value="family">Family template</option>
+        <option value="private">Private template</option>
+        <option value="empty">Empty</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" name="derive_allowance" value="1"> Derive Inkomst › Månadspeng</label>
+    <button type="submit">Create</button>
+  </form>
+  <p class="hint">“Derive Inkomst › Månadspeng” calculates the monthly allowance from the Bokföring categories, as the private budget does. It needs the Bokföring sub-categories inkomst, familjekonto and familjeutlägg.</p>
+</div>
+
+<div class="card">
+  <h2>Backup and restore</h2>
+  <p><a class="button secondary" href="{{ url_for('backup') }}">Download backup</a></p>
+  <form method="post" action="{{ url_for('restore') }}" enctype="multipart/form-data" class="stack">
+    <label>Restore from a database file (e.g. your existing transactions.db)
+      <input type="file" name="file" accept=".db,.sqlite,.sqlite3" required></label>
+    <label class="check"><input type="checkbox" name="confirm" value="1"> Replace all current data with this file</label>
+    <div class="actions"><button type="submit" class="danger">Restore</button></div>
+  </form>
+  <p class="hint">A database from before accounts existed is upgraded on restore: all its data ends up in the account “Privat”.
+    Database: <span class="mono">{{ db_path }}</span> (schema v{{ schema }})</p>
+</div>
+{% endblock %}

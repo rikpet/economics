@@ -1,0 +1,22 @@
+{% macro category_select(groups, main=None, sub=None, name="category", placeholder="Choose category…", required=False) %}
+{%- set ns = namespace(found=false) -%}
+{%- for m, cats in groups %}{% for c in cats %}{% if main and sub and c.main_category == main|lower and c.sub_category == sub|lower %}{% set ns.found = true %}{% endif %}{% endfor %}{% endfor -%}
+<select name="{{ name }}" {% if required %}required{% endif %}>
+  {% if main and not ns.found %}
+  <option value="" selected>{{ main }} › {{ sub }} (not in category tree)</option>
+  {% else %}
+  <option value="" {% if not main %}selected{% endif %}>{{ placeholder }}</option>
+  {% endif %}
+  {% for m, cats in groups %}
+  <optgroup label="{{ m|capitalize }}">
+    {% for c in cats %}
+    <option value="{{ c.id }}" {% if main and sub and c.main_category == main|lower and c.sub_category == sub|lower %}selected{% endif %}>{{ m|capitalize }} › {{ c.sub_category|capitalize }}</option>
+    {% endfor %}
+  </optgroup>
+  {% endfor %}
+</select>
+{% endmacro %}
+
+{% macro amount(value) -%}
+<span class="amount {% if value < 0 %}neg{% elif value > 0 %}pos{% endif %}">{{ value|money }}</span>
+{%- endmacro %}

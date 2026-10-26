@@ -30,3 +30,16 @@ class IssuerClassification:
     issuer: str
     main_category: str
     sub_category: str
+
+@dataclass
+class Account:
+    id: int
+    name: str
+    derive_allowance: bool = False
+
+@dataclass
+class Category:
+    id: int
+    main_category: str
+    sub_category: str
+    invert_sign: bool = True

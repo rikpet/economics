@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Categories for {{ account.name }}</h1></div>
+<p class="hint">Renaming a category also updates the transactions and issuer rules that use it. Removing one leaves its transactions under “Uncategorized” in the budget.</p>
+<div class="card">
+  <h2>Add category</h2>
+  <form method="post" action="{{ url_for('add_category', account_id=account.id) }}" class="row-form">
+    <input type="text" name="main" placeholder="Main category" list="mains" required>
+    <datalist id="mains">{% for m, _ in groups %}<option value="{{ m }}">{% endfor %}</datalist>
+    <input type="text" name="sub" placeholder="Sub category" required>
+    <select name="kind"><option value="expense">Expense</option><option value="income">Income</option></select>
+    <button type="submit">Add</button>
+  </form>
+</div>
+{% for m, cats in groups %}
+<div class="card">
+  <h2>{{ m|capitalize }}</h2>
+  <div class="form-list">
+    {% for c in cats %}
+          <form method="post" action="{{ url_for('update_category', account_id=account.id, category_id=c.id) }}" class="row-form compact cat-row">
+            <input type="text" name="main" value="{{ c.main_category }}" required aria-label="Main category">
+            <input type="text" name="sub" value="{{ c.sub_category }}" required aria-label="Sub category">
+            <select name="kind" aria-label="Type">
+              <option value="expense" {% if c.invert_sign %}selected{% endif %}>Expense</option>
+              <option value="income" {% if not c.invert_sign %}selected{% endif %}>Income</option>
+            </select>
+            <span class="num muted" title="Transactions using this category">{{ usage[c.id] }} used</span>
+            <button type="submit" name="action" value="save" class="secondary">Save</button>
+            <button type="submit" name="action" value="delete" class="danger" onclick='return confirm({{ ("Remove " ~ c.main_category ~ " › " ~ c.sub_category ~ "?" ~ ((" " ~ usage[c.id] ~ " transactions will count as uncategorized.") if usage[c.id] else ""))|tojson }})'>Remove</button>
+          </form>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="card empty">No categories yet. Add one above.</div>
+{% endfor %}
+{% endblock %}

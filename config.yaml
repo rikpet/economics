@@ -1,0 +1,32 @@
+name: Economics
+version: "2.0.0"
+slug: economics
+description: Private and family economy - import bank files, classify transactions and follow the budget.
+url: https://github.com/rikpet/economics
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+init: true
+ingress: true
+ingress_port: 8100
+panel_icon: mdi:cash-multiple
+panel_title: Economics
+homeassistant_api: true
+watchdog: http://[HOST]:[PORT:8100]/healthz
+map:
+  - type: share
+    read_only: false
+options:
+  log_level: info
+  database_path: /data/economics.db
+  publish_sensors: true
+  sensor_interval: 15
+  currency: SEK
+schema:
+  log_level: list(debug|info|warning|error)
+  database_path: str
+  publish_sensors: bool
+  sensor_interval: int(1,1440)
+  currency: str

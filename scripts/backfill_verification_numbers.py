@@ -7,6 +7,7 @@ order so duplicate-purchase rows all get filled deterministically.
 
 Usage:
     python scripts/backfill_verification_numbers.py [--apply] [--originals DIR] [--db PATH]
+        [--account ID]
 """
 
 import argparse
@@ -20,6 +21,7 @@ sys.path.insert(0, os.path.join(REPO_ROOT, 'src'))
 
 from parser import parse_seb_transactions, parse_remember_transactions  # noqa: E402
 from constants import DATABASE_PATH  # noqa: E402
+from database import create_tables  # noqa: E402
 
 
 def parse_originals(originals_dir: str):
@@ -34,12 +36,13 @@ def parse_originals(originals_dir: str):
     return parsed
 
 
-def load_null_rows(db_path: str):
+def load_null_rows(db_path: str, account_id: int):
     with sqlite3.connect(db_path) as conn:
         c = conn.cursor()
         c.execute(
             'SELECT id, date, issuer, amount, origin FROM transactions '
-            'WHERE verification_number IS NULL ORDER BY id'
+            'WHERE verification_number IS NULL AND account_id = ? ORDER BY id',
+            (account_id,)
         )
         return c.fetchall()
 
@@ -53,7 +56,10 @@ def main():
     ap.add_argument('--apply', action='store_true', help='Write updates (default: dry-run)')
     ap.add_argument('--originals', default=os.path.join(REPO_ROOT, 'originals'))
     ap.add_argument('--db', default=DATABASE_PATH)
+    ap.add_argument('--account', type=int, default=1, help='Account id (default: 1)')
     args = ap.parse_args()
+
+    create_tables(args.db)
 
     print(f'DB: {args.db}')
     print(f'Originals: {args.originals}')
@@ -62,7 +68,7 @@ def main():
     sources = parse_originals(args.originals)
     print(f'Parsed {len(sources)} source transactions from originals/')
 
-    db_rows = load_null_rows(args.db)
+    db_rows = load_null_rows(args.db, args.account)
     print(f'Found {len(db_rows)} DB rows with verification_number IS NULL')
 
     db_by_key = defaultdict(list)

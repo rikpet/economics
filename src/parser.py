@@ -1,7 +1,6 @@
 import csv
 import hashlib
 from app_types import IssuerClassification, Transaction
-import pandas as pd
 
 
 def _hash_id(prefix: str, *parts: str) -> str:
@@ -61,6 +60,8 @@ def parse_remember_transactions(file_path: str) -> list[Transaction]:
     Args:
         file_path (str): Path to the Remember card transactions Excel file.
     """
+    import pandas as pd  # heavy; only loaded when a Remember file is imported
+
     transactions = []
     df = pd.read_excel(file_path, header=2)
     for _, row in df.iterrows():

@@ -1,29 +1,27 @@
 from datetime import datetime
-import sqlite3
 import click
 
-from constants import DATABASE_PATH
+import database as db
+from cli.context import AppContext, pass_app
 from printout import generate_table
 from utils import month_no_to_name
 
-def check_allowance():
-    """Check if the allowance for the current month has been set."""
-    current_month = datetime.now().month
-    current_year = datetime.now().year
+def check_allowance(app: AppContext):
+    """Make sure the allowance for the current month exists, using the account's defaults.
 
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        c = conn.cursor()
-        c.execute('SELECT * FROM allowances WHERE month = ? AND year = ?', (current_month, current_year))
-        row = c.fetchone()
-        if not row:
-            c.execute('SELECT * FROM settings WHERE key = ?', ('rikard_allowance',))
-            rikard_default = c.fetchone()
-            c.execute('SELECT * FROM settings WHERE key = ?', ('sara_allowance',))
-            sara_default = c.fetchone()
-            c.execute(
-                'INSERT INTO allowances (year, month, rikard_allowance, sara_allowance) VALUES (?, ?, ?, ?)', 
-                (current_year, current_month, rikard_default[1] if rikard_default else 0, sara_default[1] if sara_default else 0)
-            )
+    Accounts without default allowances are left alone.
+    """
+    rikard_default = db.get_setting(app.database_path, app.account_id, 'rikard_allowance')
+    sara_default = db.get_setting(app.database_path, app.account_id, 'sara_allowance')
+    if rikard_default is None and sara_default is None:
+        return
+
+    now = datetime.now()
+    db.set_allowance(
+        app.database_path, app.account_id, now.year, now.month,
+        float(rikard_default or 0), float(sara_default or 0),
+        only_if_missing=True
+    )
 
 
 @click.command(name='add')
@@ -32,7 +30,8 @@ def check_allowance():
 @click.option('--year', type=int, default=None, help="Year to set the allowance for (default: current year)")
 @click.option('--rikard', is_flag=True, help="Set the allowance for Rikard")
 @click.option('--sara', is_flag=True, help="Set the allowance for Sara")
-def add_allowance(amount: float, month: int, year: int | None, rikard: bool, sara: bool):
+@pass_app
+def add_allowance(app: AppContext, amount: float, month: int, year: int | None, rikard: bool, sara: bool):
     """Set the allowance for a specific month and year."""
     if month is None:
         raise click.ClickException("Month must be specified when adding an allowance.")
@@ -48,13 +47,8 @@ def add_allowance(amount: float, month: int, year: int | None, rikard: bool, sar
     if not rikard and not sara:
         rikard = sara = True  # If neither is specified, set both
 
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        c = conn.cursor()
-        if rikard:
-            c.execute('INSERT INTO allowances (year, month, rikard_allowance) VALUES (?, ?, ?)', (year, month, amount))
-        if sara:
-            c.execute('INSERT INTO allowances (year, month, sara_allowance) VALUES (?, ?, ?)', (year, month, amount))
-        conn.commit()
+    db.set_allowance(app.database_path, app.account_id, year, month,
+                     amount if rikard else None, amount if sara else None)
 
 
 @click.command(name='update')
@@ -63,70 +57,55 @@ def add_allowance(amount: float, month: int, year: int | None, rikard: bool, sar
 @click.option('--year', type=int, default=None, help="Year for the allowance (default: current year)")
 @click.option('--rikard', is_flag=True, help="Set the allowance for Rikard")
 @click.option('--sara', is_flag=True, help="Set the allowance for Sara")
-def update_allowance(month: int, amount: float, year: int | None, rikard: bool, sara: bool):
+@pass_app
+def update_allowance(app: AppContext, month: int, amount: float, year: int | None, rikard: bool, sara: bool):
     """Set the allowance for a specific month and year."""
     year = year if year is not None else datetime.now().year
 
     if not rikard and not sara:
         rikard = sara = True  # If neither is specified, update both
 
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        c = conn.cursor()
-        if rikard:
-            c.execute('UPDATE allowances SET rikard_allowance = ? WHERE month = ? AND year = ?', (amount, month, year))
-        if sara:
-            c.execute('UPDATE allowances SET sara_allowance = ? WHERE month = ? AND year = ?', (amount, month, year))
-        conn.commit()
+    db.set_allowance(app.database_path, app.account_id, year, month,
+                     amount if rikard else None, amount if sara else None)
 
 
 @click.command(name='list')
 @click.option('--month', type=int, default=None, help="Month to list the allowance for (default: current month)")
 @click.option('--year', type=int, default=None, help="Year to list the allowance for (default: current year)")
-def list_allowance(month: int | None, year: int | None):
+@pass_app
+def list_allowance(app: AppContext, month: int | None, year: int | None):
     """List the allowance for the current month and year."""
     year = year if year is not None else datetime.now().year
 
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        c = conn.cursor()
-        if month is None:
-            c.execute('SELECT * FROM allowances WHERE year = ?', (year,))
-        else:
-            c.execute('SELECT * FROM allowances WHERE month = ? AND year = ?', (month, year))
-        
-        rows = c.fetchall()
+    rows = db.get_allowances(app.database_path, app.account_id, year, month)
 
-        if not rows:
-            click.echo("No allowances found for the specified period.")
-            return
-        
-        r = []
-        for row in rows:
-            r.append([
-                f"{month_no_to_name(row[2])}",  # Month
-                f"{row[1]:d}",  # Year
-                f"{row[3]:.2f}",  # Rikard Allowance
-                f"{row[4]:.2f}"   # Sara Allowance
-            ])
+    if not rows:
+        click.echo("No allowances found for the specified period.")
+        return
 
-        click.echo(generate_table(
-            header=["Month", "Year", "Rikard Allowance", "Sara Allowance"],
-            rows=r
-        ))
+    r = []
+    for row in rows:
+        r.append([
+            f"{month_no_to_name(row['month'])}",
+            f"{row['year']:d}",
+            f"{row['rikard_allowance']:.2f}",
+            f"{row['sara_allowance']:.2f}"
+        ])
+
+    click.echo(generate_table(
+        header=["Month", "Year", "Rikard Allowance", "Sara Allowance"],
+        rows=r
+    ))
 
 
 @click.command(name='default')
 @click.argument('amount', type=float)
 @click.option('--rikard', is_flag=True, help="Set the default allowance for Rikard")
 @click.option('--sara', is_flag=True, help="Set the default allowance for Sara")
-def set_default_allowance(amount: float, rikard: bool, sara: bool):
+@pass_app
+def set_default_allowance(app: AppContext, amount: float, rikard: bool, sara: bool):
     """Set the default allowance amount."""
     if rikard:
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            c = conn.cursor()
-            c.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ('rikard_allowance', amount))
-            conn.commit()
+        db.set_setting(app.database_path, app.account_id, 'rikard_allowance', str(amount))
     if sara:
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            c = conn.cursor()
-            c.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ('sara_allowance', amount))
-            conn.commit()
+        db.set_setting(app.database_path, app.account_id, 'sara_allowance', str(amount))

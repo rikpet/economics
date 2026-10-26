@@ -1,5 +1,5 @@
 import pytest
-from src.app_types import ReadTransaction
+from src.app_types import Category, ReadTransaction
 from src.balance import Balance, SubCategory
 
 def test_subcategory_add_and_invert():
@@ -66,14 +66,39 @@ def test_balance_categories_and_subcategories():
 def test_balance_add_invalid_main_category():
     balance = Balance(2025, 2)
     t = ReadTransaction(1, '2025-02-01', 'A', 100, 'O', 'invalid', 'butik')
-    with pytest.raises(ValueError, match='Unknown main category'):
-        balance.add(t)
+    balance.add(t)
+    assert balance.get('uncategorized') == 100
 
 def test_balance_add_invalid_sub_category():
     balance = Balance(2025, 2)
     t = ReadTransaction(1, '2025-02-01', 'A', 100, 'O', 'mat', 'invalid')
-    with pytest.raises(ValueError, match='Unknown sub-category'):
-        balance.add(t)
+    balance.add(t)
+    assert balance.get('mat') == 0
+    assert balance.get('uncategorized') == 100
+
+def test_balance_category_names_are_case_insensitive():
+    balance = Balance(2025, 2)
+    balance.add(ReadTransaction(1, '2025-02-01', 'A', -50, 'O', 'Övrigt', 'Bankkostnader'))
+    assert balance.get_sub_category('övrigt', 'bankkostnader') == 50
+
+def test_balance_with_custom_categories():
+    categories = [
+        Category(1, 'boende', 'el', True),
+        Category(2, 'inkomst', 'lön', False),
+    ]
+    balance = Balance(2025, 2, categories=categories)
+    balance.add(ReadTransaction(1, '2025-02-01', 'A', -400, 'O', 'boende', 'el'))
+    balance.add(ReadTransaction(2, '2025-02-25', 'B', 30000, 'O', 'inkomst', 'lön'))
+    assert balance.categories() == ['boende', 'inkomst', 'uncategorized']
+    assert balance.get('boende') == 400
+    # No bokföring categories, so the allowance is not derived.
+    assert balance.derive_allowance is False
+    assert balance.get('inkomst') == 30000
+
+def test_balance_derive_allowance_disabled():
+    balance = Balance(2025, 2, dept=100, derive_allowance=False)
+    balance.balance['bokföring']['inkomst'].set(2000)
+    assert balance.get('inkomst') == 0
 
 def test_balance_get_invalid_category():
     balance = Balance(2025, 2)
