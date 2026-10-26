@@ -38,10 +38,10 @@ def test_insert_and_get_transaction():
         comment='TestComment'
     )
 
-    database.insert_transaction(MOCK_DB_PATH, t)
-    transactions = database.get_transactions(MOCK_DB_PATH)
+    database.insert_transaction(MOCK_DB_PATH, 1, t)
+    transactions = database.get_transactions(MOCK_DB_PATH, 1)
     assert any(tr.issuer == 'TestIssuer' for tr in transactions)
-    tr = database.get_transaction(MOCK_DB_PATH, 1)
+    tr = database.get_transaction(MOCK_DB_PATH, 1, 1)
     assert tr is not None
     assert tr.issuer == 'TestIssuer'
     assert tr.amount == 123.45
@@ -59,9 +59,9 @@ def test_duplicate_verification_number_rejected():
         date='2025-11-02', issuer='Y', amount=20.0, origin='SEB',
         verification_number='SEB_dup_test'
     )
-    database.insert_transaction(MOCK_DB_PATH, t1)
+    database.insert_transaction(MOCK_DB_PATH, 1, t1)
     try:
-        database.insert_transaction(MOCK_DB_PATH, t2)
+        database.insert_transaction(MOCK_DB_PATH, 1, t2)
     except sqlite3.IntegrityError:
         return
     raise AssertionError('Expected IntegrityError on duplicate verification_number')
@@ -70,8 +70,8 @@ def test_duplicate_verification_number_rejected():
 def test_null_verification_numbers_allowed():
     t1 = Transaction(date='2025-11-03', issuer='A', amount=1.0, origin='SEB')
     t2 = Transaction(date='2025-11-04', issuer='B', amount=2.0, origin='SEB')
-    database.insert_transaction(MOCK_DB_PATH, t1)
-    database.insert_transaction(MOCK_DB_PATH, t2)
+    database.insert_transaction(MOCK_DB_PATH, 1, t1)
+    database.insert_transaction(MOCK_DB_PATH, 1, t2)
 
 
 def test_classify_issuer_and_get_issuer_classification():
@@ -80,11 +80,11 @@ def test_classify_issuer_and_get_issuer_classification():
         main_category='MainCat',
         sub_category='SubCat'
     )
-    database.classify_issuer(MOCK_DB_PATH, ic)
-    issuer = database.get_issuer_classification(MOCK_DB_PATH, 'TestIssuer')
+    database.classify_issuer(MOCK_DB_PATH, 1, ic)
+    issuer = database.get_issuer_classification(MOCK_DB_PATH, 1, 'TestIssuer')
     assert issuer is not None
     assert issuer.main_category == 'MainCat'
     assert issuer.sub_category == 'SubCat'
     
-    issuer_none = database.get_issuer_classification(MOCK_DB_PATH, 'UnknownIssuer')
+    issuer_none = database.get_issuer_classification(MOCK_DB_PATH, 1, 'UnknownIssuer')
     assert issuer_none is  None

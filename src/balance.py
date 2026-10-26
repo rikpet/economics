@@ -1,5 +1,5 @@
-
-from app_types import ReadTransaction
+from app_types import Category, ReadTransaction
+from category_templates import PRIVATE
 
 
 class SubCategory():
@@ -26,75 +26,34 @@ class SubCategory():
 
 
 class Balance():
-    def __init__(self, year: int, month: int, dept: float | None = 0):
+    def __init__(self, year: int, month: int, dept: float | None = 0,
+                 categories: list[Category] | None = None, derive_allowance: bool = True):
+        """Monthly balance per category.
+
+        Args:
+            categories: The account's category tree. Defaults to the private template.
+            derive_allowance: Calculate 'inkomst/månadspeng' as bokföring/inkomst minus
+                bokföring/familjekonto minus last month's family outlays (dept).
+        """
         self.year = year
         self.month = month
         self.dept = dept
 
-        self.balance = {
-            "inkomst": {
-                "månadspeng": SubCategory(),
-                "ränta": SubCategory(),
-                "övrigt": SubCategory()
-            },
-            "hushåll": {
-                "inredning/renovering": SubCategory(True),
-                "landet": SubCategory(True),
-                "övrigt": SubCategory(True)
-            },
-            "transport": {
-                "bensin": SubCategory(True),
-                "parkering": SubCategory(True),
-                "taxi": SubCategory(True),
-                "kollektivtrafik": SubCategory(True),
-                "övrigt": SubCategory(True)
-            },
-            "försäkring": {
-                "övrigt": SubCategory(True)
-            },
-            "nöje": {
-                "kultur": SubCategory(True),
-                "aktivitet": SubCategory(True),
-                "prenumerationstjänster": SubCategory(True),
-                "resa": SubCategory(True),
-                "restaurang": SubCategory(True),
-                "grabbresa": SubCategory(True),
-                "övrigt": SubCategory(True)
-            },
-            "kläder": {
-                "övrigt": SubCategory(True)
-            },
-            "mat": {
-                "fika": SubCategory(True),
-                "butik": SubCategory(True),
-                "systembolaget": SubCategory(True),
-                "lunch": SubCategory(True),
-                "övrigt": SubCategory(True)
-            },
-            "lån": {
-                "övrigt": SubCategory(True)
-            },
-            "övrigt": {
-                "facket": SubCategory(True),
-                "bankkostnader": SubCategory(True),
-                "apotek": SubCategory(True),
-                "träning": SubCategory(True),
-                "övrigt": SubCategory(True)
-            },
-            "sparande": {
-                "övrigt": SubCategory(True)
-            },
-            "bokföring": {
-                "familjekonto": SubCategory(True),
-                "familjeutlägg": SubCategory(True),
-                "inkomst": SubCategory(),
-                "utlägg/skuld": SubCategory(True),
-                "internöverföring": SubCategory(True)
-            },
-            "uncategorized": {
-                "övrigt": SubCategory()
-            }
-        }
+        if categories is None:
+            categories = [Category(0, m, s, invert) for m, s, invert in PRIVATE]
+
+        self.balance: dict[str, dict[str, SubCategory]] = {}
+        for c in categories:
+            subs = self.balance.setdefault(c.main_category.lower(), {})
+            subs[c.sub_category.lower()] = SubCategory(c.invert_sign)
+        self.balance.setdefault("uncategorized", {}).setdefault("övrigt", SubCategory())
+
+        self.derive_allowance = derive_allowance and all(
+            sub in self.balance.get(main, {})
+            for main, sub in (("inkomst", "månadspeng"), ("bokföring", "inkomst"),
+                              ("bokföring", "familjekonto"),
+                              ("bokföring", "familjeutlägg"))
+        )
 
     def add_several(self, transactions: list[ReadTransaction]):
         if len(transactions) == 0:
@@ -107,21 +66,23 @@ class Balance():
         self.dept = amount
 
     def add(self, transaction: ReadTransaction):
-        if transaction.main_category is None or transaction.main_category.lower() not in self.balance:
+        main = (transaction.main_category or "").lower()
+        sub = (transaction.sub_category or "").lower()
+
+        # Unknown categories (e.g. deleted or never classified) count as uncategorized so the
+        # totals still add up.
+        if main not in self.balance or sub not in self.balance[main]:
             self.balance["uncategorized"]["övrigt"].add(transaction.amount)
             return
 
-        if transaction.sub_category is None or transaction.sub_category.lower() not in self.balance[transaction.main_category.lower()]:
-            raise ValueError(f'Unknown sub-category: {transaction.sub_category}. Main category: {transaction.main_category}')
-
-        self.balance[transaction.main_category.lower()][transaction.sub_category.lower()].add(transaction.amount)
+        self.balance[main][sub].add(transaction.amount)
 
     def get(self, category: str) -> float:
         category = category.lower()
         if category not in self.balance:
             raise ValueError(f"Unknown category: {category}")
         
-        if category == "inkomst":
+        if category == "inkomst" and self.derive_allowance:
             if self.dept is None:
                 raise ValueError("Missing 'dept' argument for income calculation")
 

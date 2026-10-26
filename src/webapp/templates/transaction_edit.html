@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import category_select, amount %}
+{% block title %}Edit transaction{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Edit transaction</h1></div>
+<div class="card">
+  <dl class="facts">
+    <dt>Issuer</dt><dd>{{ t.issuer }}</dd>
+    <dt>Amount</dt><dd>{{ amount(t.amount) }}</dd>
+    <dt>Origin</dt><dd>{{ t.origin }}</dd>
+    {% if t.verification_number %}<dt>Verification no.</dt><dd class="mono">{{ t.verification_number }}</dd>{% endif %}
+  </dl>
+  <form method="post" class="stack">
+    <label>Category {{ category_select(groups, t.main_category, t.sub_category) }}</label>
+    <label class="check"><input type="checkbox" name="remember" value="1"> Use this category for all future transactions from “{{ t.issuer }}”</label>
+    <label>Date <input type="date" name="date" value="{{ t.date }}"></label>
+    <label>Comment <input type="text" name="comment" value="{{ t.comment or '' }}"></label>
+    <div class="actions">
+      <button type="submit">Save</button>
+      <a href="{{ next or url_for('transactions', account_id=account.id) }}" class="button secondary">Cancel</a>
+    </div>
+  </form>
+  {% if t.modification_log %}
+  <h2>History</h2>
+  <pre class="log">{{ t.modification_log }}</pre>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import category_select, amount %}
+{% block title %}Classify{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Classify <span class="count">{{ rows|length }}</span></h1>
+  <form method="post" action="{{ url_for('apply_rules', account_id=account.id) }}" class="inline">
+    <button type="submit" class="secondary">Apply issuer rules</button>
+  </form>
+</div>
+{% if not rows %}
+<div class="card empty">All transactions are classified.</div>
+{% else %}
+<div class="classify-list">
+  {% for t in rows %}
+  <form method="post" action="{{ url_for('classify_one', account_id=account.id, transaction_id=t.id) }}" class="card classify-item" id="t-{{ t.id }}">
+    {% if loop.nextitem %}<input type="hidden" name="next" value="{{ loop.nextitem.id }}">{% endif %}
+    <div class="classify-head">
+      <strong>{{ t.issuer }}</strong>
+      <span>{{ amount(t.amount) }}</span>
+      <span class="muted">{{ t.date }} · {{ t.origin }}</span>
+    </div>
+    <div class="classify-fields">
+      {{ category_select(groups, required=True) }}
+      <input type="text" name="comment" placeholder="Comment (optional)">
+      <label class="check"><input type="checkbox" name="remember" value="1"> Remember for this issuer</label>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

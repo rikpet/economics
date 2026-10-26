@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Budget {{ year }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Budget {{ year }}</h1>
+  <form method="get" class="inline">
+    <select name="year" onchange="this.form.submit()">
+      {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+    </select>
+    <input type="hidden" name="subs" value="{{ '0' if show_subs else '1' }}">
+    <button type="submit" class="secondary">{{ 'Hide' if show_subs else 'Show' }} sub-categories</button>
+  </form>
+</div>
+
+{% if unclassified %}
+<div class="flash warn">{{ unclassified }} transactions are not classified and count as uncategorized.
+  <a href="{{ url_for('classify', account_id=account.id) }}">Classify them</a></div>
+{% endif %}
+
+<div class="table-wrap">
+<table class="budget">
+  <thead>
+    <tr><th>Category</th>{% for m in months %}<th class="num">{{ m }}</th>{% endfor %}<th class="num">Total</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="{{ 'sub' if r.is_sub else 'main' }}">
+      <th scope="row">{{ r.label }}</th>
+      {% for v in r.values %}
+      <td class="num">
+        {% if v %}<a href="{{ url_for('transactions', account_id=account.id, year=year, month=loop.index, category=r.main_category, sub=r.sub_category or '') }}">{{ v|money }}</a>{% else %}<span class="muted">–</span>{% endif %}
+      </td>
+      {% endfor %}
+      <td class="num total">{{ r.total|money }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="hint">Expense categories are shown as positive costs. Click an amount to see its transactions.
+{% if account.derive_allowance %}<br>Inkomst › Månadspeng is calculated as Bokföring › Inkomst − Bokföring › Familjekonto − last month's Bokföring › Familjeutlägg.{% endif %}</p>
+{% endblock %}

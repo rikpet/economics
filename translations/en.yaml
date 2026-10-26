@@ -1,0 +1,18 @@
+configuration:
+  log_level:
+    name: Log level
+    description: How much the add-on writes to its log.
+  database_path:
+    name: Database path
+    description: >-
+      SQLite database file. /data is backed up with the add-on. Use a path under /share
+      (e.g. /share/economics/transactions.db) to also reach the file from your PC via Samba.
+  publish_sensors:
+    name: Publish sensors
+    description: Publish budget figures per account and category as Home Assistant sensors.
+  sensor_interval:
+    name: Sensor interval
+    description: Minutes between sensor refreshes. Sensors are also refreshed after every change.
+  currency:
+    name: Currency
+    description: Unit of measurement for the sensors.

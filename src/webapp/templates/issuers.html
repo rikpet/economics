@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import category_select %}
+{% block title %}Issuer rules{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Issuer rules</h1></div>
+<p class="hint">Imported transactions from an issuer with a rule get the rule's category automatically.</p>
+<div class="card">
+  <form method="post" action="{{ url_for('add_issuer', account_id=account.id) }}" class="row-form">
+    <input type="text" name="issuer" placeholder="Issuer, exactly as in the bank file" required>
+    {{ category_select(groups, required=True) }}
+    <button type="submit">Add rule</button>
+  </form>
+</div>
+<form method="get" class="filters">
+  <label>Search <input type="search" name="q" value="{{ q }}"></label>
+  <button type="submit" class="secondary">Search</button>
+</form>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Issuer</th><th>Category</th><th></th></tr></thead>
+  <tbody>
+  {% for id, r in rows %}
+    <tr>
+      <td>{{ r.issuer }}</td>
+      <td colspan="2">
+        <form method="post" action="{{ url_for('update_issuer', account_id=account.id, issuer_id=id, q=q) }}" class="row-form compact">
+          {{ category_select(groups, r.main_category, r.sub_category) }}
+          <button type="submit" name="action" value="save" class="secondary">Save</button>
+          <button type="submit" name="action" value="delete" class="danger" onclick='return confirm({{ ("Remove the rule for " ~ r.issuer ~ "?")|tojson }})'>Remove</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="3" class="muted">No rules yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

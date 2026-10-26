@@ -40,7 +40,7 @@ def _seed_with_null_vns(originals_dir: str):
             continue
         for t in txs:
             t.verification_number = None
-            database.insert_transaction(MOCK_DB_PATH, t)
+            database.insert_transaction(MOCK_DB_PATH, 1, t)
 
 
 def _run_backfill(originals_dir: str, apply: bool):

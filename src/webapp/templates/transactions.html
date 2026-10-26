@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "_macros.html" import amount %}
+{% block title %}Transactions{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Transactions</h1></div>
+<form method="get" class="filters">
+  <label>Year
+    <select name="year">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
+  </label>
+  <label>Month
+    <select name="month">
+      <option value="">All</option>
+      {% for m in months %}<option value="{{ loop.index }}" {% if loop.index == month %}selected{% endif %}>{{ m }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Category
+    <select name="category">
+      <option value="">All</option>
+      {% for m, cats in groups %}<option value="{{ m }}" {% if main == m %}selected{% endif %}>{{ m|capitalize }}</option>{% endfor %}
+      <option value="uncategorized" {% if main == 'uncategorized' %}selected{% endif %}>Uncategorized</option>
+    </select>
+  </label>
+  {% if sub %}<input type="hidden" name="sub" value="{{ sub }}">{% endif %}
+  <label>Origin
+    <select name="origin">
+      <option value="">All</option>
+      {% for o in origins %}<option value="{{ o }}" {% if origin == o %}selected{% endif %}>{{ o }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Search <input type="search" name="q" value="{{ q or '' }}" placeholder="Issuer or comment"></label>
+  <label>Sort
+    <select name="sort">
+      <option value="desc" {% if sort == 'desc' %}selected{% endif %}>Newest first</option>
+      <option value="asc" {% if sort == 'asc' %}selected{% endif %}>Oldest first</option>
+    </select>
+  </label>
+  <button type="submit">Filter</button>
+</form>
+{% if sub %}<p class="hint">Sub-category: <strong>{{ sub }}</strong> · <a href="{{ url_for('transactions', account_id=account.id, year=year, month=month or '', category=main) }}">show whole category</a></p>{% endif %}
+
+<p class="summary">{{ rows|length }} transactions · sum {{ amount(total) }}</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Date</th><th>Issuer</th><th class="num">Amount</th><th>Origin</th><th>Category</th><th>Comment</th><th></th></tr></thead>
+  <tbody>
+  {% for t in rows %}
+    <tr>
+      <td class="nowrap">{{ t.date }}</td>
+      <td>{{ t.issuer }}</td>
+      <td class="num">{{ amount(t.amount) }}</td>
+      <td>{{ t.origin }}</td>
+      <td>{% if t.main_category %}{{ t.main_category|capitalize }} › {{ (t.sub_category or '')|capitalize }}{% else %}<span class="badge">Unclassified</span>{% endif %}</td>
+      <td>{{ t.comment or '' }}</td>
+      <td><a href="{{ url_for('edit_transaction', account_id=account.id, transaction_id=t.id, next=request.full_path) }}">Edit</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="muted">No transactions match the filter.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

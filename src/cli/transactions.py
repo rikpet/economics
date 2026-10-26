@@ -1,16 +1,13 @@
 from datetime import datetime, timedelta
 import os
-import sqlite3
 import click
 import questionary
 
-from app_types import IssuerClassification
-from balance import Balance
-from constants import DATABASE_PATH
 import calendar
 
 import database as db
-from parser import parse_remember_transactions, parse_seb_transactions
+import operations
+from cli.context import AppContext, category_tree, pass_app
 from printout import generate_table
 
 
@@ -55,7 +52,8 @@ def select_file(start_dir="."):
 @click.command(name='add')
 @click.argument('file_path', required=False)
 @click.argument('origin', required=False)
-def add_transactions(file_path, origin):
+@pass_app
+def add_transactions(app: AppContext, file_path, origin):
     """Adds transactions to database
 
     Args:
@@ -78,30 +76,14 @@ def add_transactions(file_path, origin):
         if origin is None:
             return
 
-    click.echo(f'Processing file: {file_path}')
+    click.echo(f'Processing file: {file_path} (account: {app.account.name})')
 
-    if origin.lower() == "seb":
-        transactions = parse_seb_transactions(file_path)
-    elif origin.lower() == "remember":
-        transactions = parse_remember_transactions(file_path)
-    else:
-        raise ValueError("Unsupported origin")
-    
-    added = 0
-    skipped_duplicates = 0
-    for trans in transactions:
-        issuer = db.get_issuer_classification(DATABASE_PATH, trans.issuer)
+    try:
+        result = operations.import_file(app.database_path, app.account_id, file_path, origin)
+    except ValueError as e:
+        raise click.ClickException(str(e))
 
-        trans.main_category = issuer.main_category if issuer is not None else None
-        trans.sub_category = issuer.sub_category if issuer is not None else None
-
-        try:
-            db.insert_transaction(DATABASE_PATH, trans)
-            added += 1
-        except sqlite3.IntegrityError:
-            skipped_duplicates += 1
-
-    click.echo(f'Added {added} transactions. Skipped {skipped_duplicates} duplicates.')
+    click.echo(f'Added {result.added} transactions. Skipped {result.skipped_duplicates} duplicates.')
 
 #TODO: add check on category and sub-category
 @click.command(name='list')
@@ -116,7 +98,8 @@ def add_transactions(file_path, origin):
 @click.option('--sum', 'show_sum', is_flag=True, help="Show sum of transaction amounts")
 @click.option('--count', 'show_count', is_flag=True, help="Show the number of transactions")
 @click.option('--verbose', '-v', is_flag=True, help="Show all transaction information")
-def list_transactions(start_date, end_date, month, year, category: tuple[str], sub_category: tuple[str], origin: str, sort_date: str, show_sum: bool, show_count: bool, verbose: bool):
+@pass_app
+def list_transactions(app: AppContext, start_date, end_date, month, year, category: tuple[str], sub_category: tuple[str], origin: str, sort_date: str, show_sum: bool, show_count: bool, verbose: bool):
     """List all transactions in the database, optionally filtered by date range."""
 
     year = datetime.now().year if year is None else year
@@ -125,7 +108,7 @@ def list_transactions(start_date, end_date, month, year, category: tuple[str], s
         days_in_month = calendar.monthrange(year, month)[1]
         end_date = start_date + timedelta(days=days_in_month - 1)
 
-    transactions = db.get_transactions(DATABASE_PATH,start_date=start_date, end_date=end_date, main_category=list(category), sub_category=list(sub_category), origin=origin)
+    transactions = db.get_transactions(app.database_path, app.account_id, start_date=start_date, end_date=end_date, main_category=list(category), sub_category=list(sub_category), origin=origin)
 
     if len(transactions) == 0:
         click.echo('No transactions found.')
@@ -183,51 +166,37 @@ def list_transactions(start_date, end_date, month, year, category: tuple[str], s
 @click.option('--category', 'main_category', type=str, default=None, help="New main category")
 @click.option('--sub-category', type=str, default=None, help="New sub-category")
 @click.option('--date', type=click.DateTime(formats=["%Y-%m-%d"]), default=None, help="New date (YYYY-MM-DD)")
-def modify_transaction(transaction_id, main_category, sub_category, date):
+@click.option('--comment', type=str, default=None, help="New comment")
+@pass_app
+def modify_transaction(app: AppContext, transaction_id, main_category, sub_category, date, comment):
     """Modify an existing transaction."""
-    if main_category is None and sub_category is None and date is None:
-        click.echo('No modifications specified. Use --category, --sub-category, or --date to specify modifications.')
+    if main_category is None and sub_category is None and date is None and comment is None:
+        click.echo('No modifications specified. Use --category, --sub-category, --date or --comment to specify modifications.')
         return
 
-    trans = db.get_transaction(DATABASE_PATH, transaction_id)
-    if trans is None:
-        click.echo(f'No transaction found with id {transaction_id}.')
-        return
-
-    changes = []
-    if main_category is not None:
-        changes.append(f"main_category: {trans.main_category} -> {main_category}")
-    if sub_category is not None:
-        changes.append(f"sub_category: {trans.sub_category} -> {sub_category}")
-    if date is not None:
-        changes.append(f"date: {trans.date} -> {date.strftime('%Y-%m-%d')}")
-
-    log_entry = f"[{datetime.now().strftime('%Y-%m-%d')}] modified {', '.join(changes)}"
-    new_log = f"{trans.modification_log}\n{log_entry}" if trans.modification_log else log_entry
-
-    db.update_transaction(DATABASE_PATH, transaction_id, main_category, sub_category, date, modification_log=new_log)
+    try:
+        operations.modify_transaction(app.database_path, app.account_id, transaction_id,
+                                      main_category, sub_category, date, comment)
+    except ValueError as e:
+        click.echo(str(e))
 
 
 @click.command(name='classify')
-def classify_transactions():
+@pass_app
+def classify_transactions(app: AppContext):
     """Classify transactions not yet classified."""
-    unclassified_transactions = db.get_unclassified_transactions(DATABASE_PATH)
-    for trans in unclassified_transactions:
+    # Transactions whose issuer has a rule are classified without asking.
+    operations.apply_issuer_rules(app.database_path, app.account_id)
 
-        mock = Balance(2025, 1)
-        
-        # Check if the issuer can be classified
-        issuer = db.get_issuer_classification(DATABASE_PATH, trans.issuer)
-        if issuer is not None:
-            db.update_transaction(DATABASE_PATH, trans.id, issuer.main_category, issuer.sub_category)
-            continue
+    tree = category_tree(app)
+    for trans in db.get_unclassified_transactions(app.database_path, app.account_id):
 
         # Prompt user for classification
         click.echo(f'\n\nTransaction: {trans.issuer} | {trans.amount} | {trans.date} | {trans.origin}' )
 
         main_category=questionary.select(
             "Main category for this transaction",
-            choices=["SKIP"] + list(mock.categories()),
+            choices=["SKIP"] + list(tree),
             use_shortcuts=True,
 
         ).ask()
@@ -238,7 +207,7 @@ def classify_transactions():
         if main_category == "SKIP":
             continue
             
-        sub_categories = mock.sub_categories(main_category)
+        sub_categories = tree[main_category]
         if len(sub_categories) == 1:
             sub_category = sub_categories[0]
         else:
@@ -261,20 +230,16 @@ def classify_transactions():
             default=False
         ).ask()
 
-        if store_issuer_classification:
-            db.classify_issuer(DATABASE_PATH, IssuerClassification(
-                issuer=trans.issuer,
-                main_category=main_category,
-                sub_category=sub_category
-            ))
-
-        db.update_transaction(DATABASE_PATH, trans.id, main_category, sub_category, comment=comment)
+        operations.classify_transaction(app.database_path, app.account_id, trans.id,
+                                        main_category, sub_category, comment,
+                                        remember_issuer=bool(store_issuer_classification))
 
 
 @click.command(name='unclassified')
-def unclassified_transactions():
+@pass_app
+def unclassified_transactions(app: AppContext):
     """Check for unclassified transactions."""
-    unclassified_transactions = db.get_unclassified_transactions(DATABASE_PATH)
+    unclassified_transactions = db.get_unclassified_transactions(app.database_path, app.account_id)
     if len(unclassified_transactions) == 0:
         click.echo('No unclassified transactions found.')
         return

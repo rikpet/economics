@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Economics{% endblock %}{% if account %} · {{ account.name }}{% endif %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=app_version) }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Economics</div>
+  {% if accounts %}
+  <label class="account-switch">
+    <span class="visually-hidden">Account</span>
+    <select onchange="if (this.value) location.href = this.value">
+      {% if not account %}<option value="">Choose account…</option>{% endif %}
+      {% for a in accounts %}
+      <option value="{{ url_for('budget', account_id=a.id) }}" {% if account and a.id == account.id %}selected{% endif %}>{{ a.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  <nav>
+    {% if account %}
+    {% set ep = request.endpoint %}
+    <a href="{{ url_for('budget', account_id=account.id) }}" {% if ep == 'budget' %}class="active"{% endif %}>Budget</a>
+    <a href="{{ url_for('transactions', account_id=account.id) }}" {% if ep in ('transactions', 'edit_transaction') %}class="active"{% endif %}>Transactions</a>
+    <a href="{{ url_for('classify', account_id=account.id) }}" {% if ep == 'classify' %}class="active"{% endif %}>Classify</a>
+    <a href="{{ url_for('import_file', account_id=account.id) }}" {% if ep == 'import_file' %}class="active"{% endif %}>Import</a>
+    <a href="{{ url_for('issuers', account_id=account.id) }}" {% if ep == 'issuers' %}class="active"{% endif %}>Issuer rules</a>
+    <a href="{{ url_for('categories', account_id=account.id) }}" {% if ep == 'categories' %}class="active"{% endif %}>Categories</a>
+    {% endif %}
+    <a href="{{ url_for('accounts') }}" {% if request.endpoint == 'accounts' %}class="active"{% endif %}>Accounts</a>
+  </nav>
+</header>
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% for kind, message in messages %}
+  <div class="flash {{ kind }}">{{ message }}</div>
+  {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

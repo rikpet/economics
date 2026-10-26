@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Import{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Import transactions to {{ account.name }}</h1></div>
+<div class="card">
+  <form method="post" enctype="multipart/form-data" class="stack">
+    <label>File <input type="file" name="file" accept=".csv,.xls,.xlsx" required></label>
+    <label>Format
+      <select name="origin">
+        <option value="auto">Detect from file type (.csv = SEB, .xls = Remember)</option>
+        <option value="seb">SEB (csv export)</option>
+        <option value="remember">Remember card (xls export)</option>
+      </select>
+    </label>
+    <div class="actions"><button type="submit">Import</button></div>
+  </form>
+  <p class="hint">Transactions already imported are skipped, so importing an overlapping period again is safe.
+    Issuers with a rule are classified automatically; the rest end up under <a href="{{ url_for('classify', account_id=account.id) }}">Classify</a>.</p>
+</div>
+{% endblock %}
