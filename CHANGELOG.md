@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.1
+
+- The charts use the latest version of Plotly (4.1). They look and work as before.
+
 ## 2.3.0
 
 - The charts are now drawn with Plotly: smoother hover with one tooltip per month listing

@@ -110,12 +110,14 @@ year before for January).
 the sensors, including their share of the main category's total. They still exist for
 classification. `econ balance --all` shows them.
 
-**Charts** use **Plotly** (`plotly.js-basic-dist-min` 3.7.0, vendored as
+**Charts** use **Plotly** (`plotly.js-basic-dist-min` 4.1.2, vendored as
 `webapp/static/vendor/plotly-basic.min.js` with its MIT license — no CDN, since the page is
 served through Ingress). `webapp/static/charts.js` wraps it in `columns()`, `hbars()` and
 `lines()`, fed by JSON the `charts` route embeds. The basic bundle has bar, scatter and pie
 only; switching to the full bundle costs ~3 MB more. To upgrade, download the tarball from
-npm, check its `dist.integrity`, and replace the file (asset URLs carry `?v=`).
+npm, check its `dist.integrity`, read the CHANGELOG's breaking changes (v4 only accepts
+valid CSS colors — ours are hex from the CSS variables), and replace the file (asset URLs
+carry `?v=`).
 The filter form (`f=1`, months `m`, shown categories `c`, `offered`) only affects the
 charts; the categories left out are remembered per account in the `economics_charts_<id>`
 cookie, months are not. A legend click on a category hides it via that form
