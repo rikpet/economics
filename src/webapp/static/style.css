@@ -267,3 +267,131 @@ table.budget td.budget-col { color: var(--muted); border-right: 1px solid var(--
 .budget-input { width: 7.5rem; text-align: right; }
 table.budget td.flag { background: var(--warn-bg) !important; box-shadow: inset 0 0 0 1px var(--warn-border); }
 .flag-list { margin: .3rem 0 0; padding-left: 1.2rem; }
+
+
+/* ---- phones ------------------------------------------------------------------------------- */
+details > summary { cursor: pointer; }
+.fold > summary { list-style: none; display: flex; align-items: center; gap: .5rem; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before {
+  content: ""; flex: none; width: .5rem; height: .5rem; margin-right: .1rem;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+}
+.fold[open] > summary::before { transform: rotate(45deg); }
+
+@media (max-width: 640px) {
+  /* One compact, non-sticky header: account picker and a tab strip you swipe sideways. */
+  .topbar { position: static; padding: .5rem .75rem 0; gap: .4rem; }
+  .brand { display: none; }
+  .account-switch { flex: 1; }
+  .account-switch select { width: 100%; }
+  .topbar nav {
+    flex-wrap: nowrap; overflow-x: auto; width: calc(100% + 1.5rem); margin: 0 -.75rem;
+    padding: 0 .75rem .5rem; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .topbar nav::-webkit-scrollbar { display: none; }
+  .topbar nav a { flex: none; padding: .55rem .85rem; }
+
+  main { padding: .75rem .75rem calc(1.5rem + env(safe-area-inset-bottom)); }
+  .page-head { margin-bottom: .75rem; }
+  h1 { font-size: 1.25rem; }
+
+  /* Comfortable tap targets. */
+  input, select, button, .button { min-height: 2.6rem; }
+  label.check { min-height: 2.6rem; }
+  input[type="checkbox"] { width: 1.15rem; height: 1.15rem; }
+}
+
+/* Budget table: the category column stays put when the months scroll sideways. */
+table.budget thead th:first-child, table.budget tbody th, table.budget tfoot th {
+  position: sticky; left: 0; z-index: 1;
+}
+table.budget thead th:first-child { background: var(--surface-2); }
+table.budget tbody tr.sub th, table.budget tfoot th { background: var(--surface); }
+.month-switch { display: none; }
+
+@media (max-width: 640px) {
+  /* One month at a time, next to the budget and the year's total. */
+  .month-switch { display: flex; gap: .4rem; margin-bottom: .6rem; }
+  .month-switch select { flex: 1; }
+  .month-switch .button { justify-content: center; min-width: 2.8rem; font-size: 1.3rem; padding: 0; }
+  table.budget .m { display: none; }
+  table.budget[data-month="1"] .m1, table.budget[data-month="2"] .m2,
+  table.budget[data-month="3"] .m3, table.budget[data-month="4"] .m4,
+  table.budget[data-month="5"] .m5, table.budget[data-month="6"] .m6,
+  table.budget[data-month="7"] .m7, table.budget[data-month="8"] .m8,
+  table.budget[data-month="9"] .m9, table.budget[data-month="10"] .m10,
+  table.budget[data-month="11"] .m11, table.budget[data-month="12"] .m12 { display: table-cell; }
+  table.budget th, table.budget td { padding: .55rem .5rem; }
+  table.budget tbody th { white-space: normal; }
+  table.budget tr.sub th { padding-left: 1.1rem; }
+  .page-head .inline { width: 100%; }
+  .page-head .inline select { flex: 1; }
+}
+
+.filter-details > summary { margin-bottom: .6rem; color: var(--muted); font-size: .9rem; }
+
+@media (max-width: 640px) {
+  /* Transactions as cards: issuer and amount first, the rest below; the card is the link. */
+  table.tx thead { display: none; }
+  table.tx, table.tx tbody { display: block; }
+  table.tx tr {
+    display: grid; grid-template-columns: 1fr auto; gap: .15rem .75rem; position: relative;
+    padding: .65rem .8rem; border-bottom: 1px solid var(--border);
+  }
+  table.tx tbody tr:last-child { border-bottom: 0; }
+  table.tx td { display: block; padding: 0; border: 0; }
+  table.tx .c-issuer { grid-column: 1; grid-row: 1; font-weight: 600; overflow-wrap: anywhere; }
+  table.tx .c-amount { grid-column: 2; grid-row: 1; font-weight: 600; }
+  table.tx .c-date { grid-column: 1; grid-row: 2; color: var(--muted); font-size: .85rem; }
+  table.tx .c-origin { grid-column: 2; grid-row: 2; color: var(--muted); font-size: .85rem; text-align: right; }
+  table.tx .c-cat { grid-column: 1 / -1; font-size: .9rem; }
+  table.tx .c-comment { grid-column: 1 / -1; color: var(--muted); font-size: .85rem; }
+  table.tx .c-comment:empty { display: none; }
+  table.tx .c-edit a { position: absolute; inset: 0; font-size: 0; color: transparent; }
+  table.tx tr:active { background: var(--surface-2); }
+  table.tx td[colspan] { grid-column: 1 / -1; }
+  .filters { gap: .5rem; }
+  .filters label { flex: 1 1 45%; }
+  .filters label:has(input[type="search"]) { flex-basis: 100%; }
+  .filters button { flex: 1 1 100%; }
+}
+
+.cat-summary { margin-bottom: .75rem; flex-wrap: wrap; }
+.cat-summary h2 { margin: 0; }
+.cat-summary .muted { font-size: .85rem; }
+.cat-card:not([open]) > .cat-summary { margin-bottom: 0; }
+.hint-details > summary { color: var(--muted); font-size: .9rem; margin-bottom: .4rem; }
+
+@media (max-width: 640px) {
+  .cat-group-head { display: grid; gap: .5rem; }
+  .cat-group-head .row-form { display: grid; grid-template-columns: 1fr auto; }
+  .cat-group-head .budget-form label { display: contents; }
+  .cat-group-head .budget-input { width: 100%; }
+  .cat-group-head .row-form > select, .cat-group-head .row-form > input[name="name"] { min-width: 0; }
+  .card { padding: .8rem; }
+}
+
+@media (max-width: 640px) {
+  /* Issuer rules as cards: the issuer, then its category and buttons. */
+  table.rules thead { display: none; }
+  table.rules, table.rules tbody, table.rules tr, table.rules td { display: block; }
+  table.rules tr { padding: .6rem .8rem; border-bottom: 1px solid var(--border); }
+  table.rules td { padding: 0; border: 0; }
+  table.rules .r-issuer { font-weight: 600; margin-bottom: .4rem; overflow-wrap: anywhere; }
+  table.rules .row-form { display: grid; grid-template-columns: 1fr 1fr; }
+  table.rules .row-form select { grid-column: 1 / -1; min-width: 0; }
+  .chip span { padding: .45rem .8rem; }
+}
+summary { -webkit-tap-highlight-color: transparent; }
+@media (max-width: 640px) {
+  .cat-group-head .budget-form { grid-template-columns: auto 1fr auto; align-items: center; }
+  .cat-group-head .row-form:not(.budget-form) > button:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .chip input[type="checkbox"] { width: 100%; height: 100%; }
+  table.budget { font-size: .92rem; }
+  table.budget th, table.budget td { padding: .55rem .4rem; }
+  table.budget tbody th { overflow-wrap: anywhere; }
+}

@@ -17,7 +17,7 @@
   </div>
 </div>
 
-<details class="card filter-bar" id="filter-details" open>
+<details class="card filter-bar" id="filter-details" open data-mobile-closed>
   <summary>Filters: {{ 'all months' if all_months else period }}{% if excluded %} · {{ excluded|length }} {{ 'category' if excluded|length == 1 else 'categories' }} hidden{% endif %}</summary>
   <fieldset>
     <legend>Months</legend>
@@ -93,10 +93,6 @@
   const full = months.map((m) => `${m} ${data.year}`);
   const base = location.pathname;
   const form = document.getElementById("chart-filters");
-  // On phones the filters start folded so the charts are visible first.
-  if (window.matchMedia("(max-width: 640px)").matches) {
-    document.getElementById("filter-details").open = false;
-  }
 
   // Every filter change reloads the page with the new selection.
   form.addEventListener("change", () => form.submit());

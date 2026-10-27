@@ -3,6 +3,8 @@
 {% block title %}Transactions{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Transactions</h1></div>
+<details class="filter-details fold" open data-mobile-closed>
+<summary>Filters: {{ year }}{% if month %} · {{ months[month - 1] }}{% endif %}{% if main %} · {{ main|capitalize }}{% if sub %} › {{ sub|capitalize }}{% endif %}{% endif %}{% if origin %} · {{ origin }}{% endif %}{% if q %} · “{{ q }}”{% endif %}</summary>
 <form method="get" class="filters">
   <label>Year
     <select name="year">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
@@ -36,23 +38,24 @@
   </label>
   <button type="submit">Filter</button>
 </form>
+</details>
 {% if sub %}<p class="hint">Sub-category: <strong>{{ sub }}</strong> · <a href="{{ url_for('transactions', account_id=account.id, year=year, month=month or '', category=main) }}">show whole category</a></p>{% endif %}
 
 <p class="summary">{{ rows|length }} transactions · sum {{ amount(total) }}</p>
 
 <div class="table-wrap">
-<table>
+<table class="tx">
   <thead><tr><th>Date</th><th>Issuer</th><th class="num">Amount</th><th>Origin</th><th>Category</th><th>Comment</th><th></th></tr></thead>
   <tbody>
   {% for t in rows %}
     <tr>
-      <td class="nowrap">{{ t.date }}</td>
-      <td>{{ t.issuer }}{% if t.parent_id %} <span class="badge split" title="Part of a split transaction">split</span>{% endif %}</td>
-      <td class="num">{{ amount(t.amount) }}</td>
-      <td>{{ t.origin }}</td>
-      <td>{% if t.main_category %}{{ t.main_category|capitalize }} › {{ (t.sub_category or '')|capitalize }}{% else %}<span class="badge">Unclassified</span>{% endif %}</td>
-      <td>{{ t.comment or '' }}</td>
-      <td><a href="{{ url_for('edit_transaction', account_id=account.id, transaction_id=t.id, back=request.query_string.decode()) }}">Edit</a></td>
+      <td class="nowrap c-date">{{ t.date }}</td>
+      <td class="c-issuer">{{ t.issuer }}{% if t.parent_id %} <span class="badge split" title="Part of a split transaction">split</span>{% endif %}</td>
+      <td class="num c-amount">{{ amount(t.amount) }}</td>
+      <td class="c-origin">{{ t.origin }}</td>
+      <td class="c-cat">{% if t.main_category %}{{ t.main_category|capitalize }} › {{ (t.sub_category or '')|capitalize }}{% else %}<span class="badge">Unclassified</span>{% endif %}</td>
+      <td class="c-comment">{{ t.comment or '' }}</td>
+      <td class="c-edit"><a href="{{ url_for('edit_transaction', account_id=account.id, transaction_id=t.id, back=request.query_string.decode()) }}">Edit<span class="visually-hidden"> {{ t.issuer }} {{ t.date }}</span></a></td>
     </tr>
   {% else %}
     <tr><td colspan="7" class="muted">No transactions match the filter.</td></tr>

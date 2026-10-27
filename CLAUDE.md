@@ -180,6 +180,13 @@ to keep idle memory low.
   (single-quoted attribute). `|e` inside a double-quoted attribute breaks on apostrophes.
 - **Flash messages contain category names**, so a test asserting a name is *absent* from a
   page must look at the table markup (`<th scope="row">…`), not the whole body.
+- **Phones (≤ 640px)** get their own layout from CSS media queries at the end of
+  `style.css`: the header stops being sticky and the nav scrolls sideways; tables become
+  cards (`table.tx`, `table.rules`, cell classes `c-*` / `r-*`); the budget table hides all
+  month columns but one (`.m .mN` cells, `data-month` on the table, `?m=` in the URL, steps
+  with ‹ ›). Sections marked `details[data-mobile-closed]` are folded on phones by the
+  script in `base.html`. Check new pages at 360 and 390px: no element wider than the
+  screen, tap targets about 40px.
 - **The legacy `C:\Users\...` default path** becomes a literal file name in the working
   directory if old code runs on Linux; it's git-ignored (`*.db`) but delete it if it appears.
 

@@ -2,12 +2,15 @@
 {% block title %}Categories{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Categories for {{ account.name }}</h1></div>
+<details class="hint-details fold" open data-mobile-closed>
+<summary>How categories work</summary>
 <p class="hint">Renaming a category also updates the transactions and issuer rules that use it.
   Hidden categories are left out of the budget, the charts and the Home Assistant sensors, but keep their transactions.
   Removing a category leaves its transactions under “Uncategorized”.</p>
 <p class="hint"><strong>Type</strong> decides the totals under the budget: <em>Expense</em> and <em>Fixed expense</em> count as expenses,
   and fixed ones are left out of “Expenses excl. fixed costs”; <em>Transfer / savings</em> is shown as a cost but not counted as an expense;
   <em>Income</em> counts positive amounts as income. <strong>0 monthly</strong> flags every finished month where the category does not add up to 0, e.g. outlays that should be paid back.</p>
+</details>
 <div class="card">
   <h2>Add category</h2>
   <form method="post" action="{{ url_for('add_category', account_id=account.id) }}" class="row-form">
@@ -20,9 +23,13 @@
 </div>
 {% for m, cats in groups %}
 {% set all_hidden = cats|selectattr('hidden')|list|length == cats|length %}
-<div class="card{% if all_hidden %} is-hidden{% endif %}">
+{% set group_kinds = cats|map(attribute='kind')|unique|list %}
+<details class="card cat-card fold{% if all_hidden %} is-hidden{% endif %}" open data-mobile-closed>
+  <summary class="cat-summary">
+    <h2>{{ m|capitalize }}</h2>
+    <span class="muted">{{ cats|length }} {{ 'sub-category' if cats|length == 1 else 'sub-categories' }}{% if group_kinds|length == 1 %} · {{ kind_labels[group_kinds[0]] }}{% endif %}{% if m in budgets %} · {{ budgets[m]|money }} kr/month{% endif %}{% if all_hidden %} · hidden{% endif %}</span>
+  </summary>
   <div class="cat-group-head">
-    <h2>{{ m|capitalize }}{% if all_hidden %} <span class="muted">· hidden</span>{% endif %}</h2>
     <form method="post" action="{{ url_for('update_category_group', account_id=account.id) }}" class="row-form compact budget-form">
       <input type="hidden" name="main" value="{{ m }}">
       <input type="hidden" name="action" value="budget">
@@ -35,7 +42,6 @@
       <input type="hidden" name="main" value="{{ m }}">
       <input type="text" name="name" value="{{ m }}" required aria-label="Rename {{ m }}">
       <button type="submit" name="action" value="rename" class="secondary">Rename</button>
-      {% set group_kinds = cats|map(attribute='kind')|unique|list %}
       <select name="kind" aria-label="Type for all of {{ m }}">
         {% if group_kinds|length > 1 %}<option value="" selected disabled>Mixed types</option>{% endif %}
         {% for k, label in kind_labels.items() %}<option value="{{ k }}" {% if group_kinds == [k] %}selected{% endif %}>{{ label }}</option>{% endfor %}
@@ -67,7 +73,7 @@
     <button type="submit" name="action" value="delete" class="danger" onclick='return confirm({{ ("Remove " ~ c.main_category ~ " › " ~ c.sub_category ~ "?" ~ ((" " ~ usage[c.id] ~ " transactions will count as uncategorized.") if usage[c.id] else ""))|tojson }})'>Remove</button>
   </form>
   {% endfor %}
-</div>
+</details>
 {% else %}
 <div class="card empty">No categories yet. Add one above.</div>
 {% endfor %}

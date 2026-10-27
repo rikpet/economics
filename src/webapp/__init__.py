@@ -224,6 +224,13 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         years = year_options(account_id)
         flags = zero_check_flags(balances, categories, completed_months(year))
         budgets = db.get_budgets(dbp(), account_id)
+        # The month a phone shows first: the chosen one, else this month, or for another
+        # year the last month with transactions.
+        now = datetime.now()
+        month_shown = request.args.get("m", type=int)
+        if not month_shown or not 1 <= month_shown <= 12:
+            used = [m for m in range(1, 13) if any(r.values[m - 1] for r in rows)]
+            month_shown = now.month if year == now.year else (used[-1] if used else 1)
         checks = budget_checks(rows, budgets, categories, year, list(balances))
 
         @after_this_request
@@ -235,7 +242,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         return render_template(
             "budget.html", rows=rows, year=year, years=years, show_subs=show_subs,
             hidden_count=len(hidden), summary=summary_rows(balances, categories), flags=flags,
-            budgets=budgets, checks=checks,
+            budgets=budgets, checks=checks, month_shown=month_shown,
             flagged={(f.main_category, f.sub_category, f.month) for f in flags},
             flagged_main={(f.main_category, f.month) for f in flags},
             unclassified=db.count_unclassified_transactions(dbp(), account_id),

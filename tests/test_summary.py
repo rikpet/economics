@@ -116,16 +116,16 @@ def test_budget_page(client, path):
 
     html = client.get('/1/?year=2024').get_data(as_text=True)
     expenses = re.search(r'<th scope="row"[^>]*>Expenses</th>(.*?)</tr>', html, re.S).group(1)
-    assert re.findall(r'<td class="num">([^<]+)</td>', expenses)[0] == '1 500'
+    assert re.findall(r'<td class="num m m\d+">([^<]+)</td>', expenses)[0] == '1 500'
     variable = re.search(r'Expenses excl. fixed costs</th>(.*?)</tr>', html, re.S).group(1)
-    assert re.findall(r'<td class="num">([^<]+)</td>', variable)[0] == '500'
+    assert re.findall(r'<td class="num m m\d+">([^<]+)</td>', variable)[0] == '500'
 
     assert 'Should be 0 every month' in html
     assert 'Bokföring › Utlägg/skuld is' in html and 'in Aug' in html
-    assert html.count('class="num flag"') == 1  # the Bokföring cell for August
+    assert len(re.findall(r'class="num m m8 flag"', html)) == 1  # the Bokföring cell for August
 
     html = client.get('/1/?year=2024&subs=1').get_data(as_text=True)
-    assert html.count('class="num flag"') == 2  # and the Utlägg/skuld cell
+    assert len(re.findall(r'class="num m m8 flag"', html)) == 2  # and the Utlägg/skuld cell
 
 
 def test_categories_page_types(client, path):

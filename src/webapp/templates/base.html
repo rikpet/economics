@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Economics{% endblock %}{% if account %} · {{ account.name }}{% endif %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=app_version) }}">
 </head>
@@ -42,5 +42,15 @@
   {% endwith %}
   {% block content %}{% endblock %}
 </main>
+<script>
+(function () {
+  // On phones: keep the active tab in view, and fold sections marked data-mobile-closed so
+  // the content comes first. Desktop leaves them open.
+  const phone = window.matchMedia("(max-width: 640px)").matches;
+  const active = document.querySelector(".topbar nav a.active");
+  if (active && phone) active.scrollIntoView({ inline: "center", block: "nearest" });
+  if (phone) document.querySelectorAll("details[data-mobile-closed]").forEach((d) => { d.open = false; });
+})();
+</script>
 </body>
 </html>

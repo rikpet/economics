@@ -105,7 +105,7 @@ def test_budget_page(client, path):
     html = client.get('/1/?year=2024').get_data(as_text=True)
     assert '>Budget</th>' in html
     mat = re.search(r'<th scope="row">Mat</th>(.*?)</tr>', html, re.S).group(1)
-    red = re.findall(r'<td class="num over" title="([^"]+)">', mat)
+    red = re.findall(r'<td class="num m m\d+ over" title="([^"]+)">', mat)
     assert red == ['200 kr over the budget of 3 000 kr']
     assert 'class="num total over"' not in mat  # 4 200 against 12 x 3 000
 

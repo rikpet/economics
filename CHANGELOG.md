@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.7.0
+
+Works much better on a phone (for example in the Home Assistant app):
+
+- A compact header: pick the account at the top and swipe the menu sideways. It no longer
+  stays on top of the page while you scroll.
+- The budget shows one month at a time next to the year's total; step with ‹ › or pick a
+  month. On a tablet the category names stay in view while the months scroll.
+- Transactions and issuer rules are shown as cards; tap a transaction to edit it. The
+  filters fold away until you need them.
+- Categories are folded into one card per group with a short summary; tap to open.
+- Bigger buttons, fields and check boxes, and nothing is wider than the screen.
+
 ## 2.6.0
 
 - Optional monthly budgets per main category. Set one under **Categories** (*Budget/month*

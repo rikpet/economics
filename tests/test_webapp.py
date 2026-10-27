@@ -363,3 +363,15 @@ def test_charts_hide_categories(client, path):
 
     data, _ = chart_data(client, f'/1/charts?year=2025&f=1&{offered}&c=inkomst&c=mat&c=l%C3%A5n')
     assert [t['key'] for t in data['totals']] == ['lån', 'mat']
+
+
+def test_budget_month_shown_on_phones(client, path):
+    db.insert_transaction(path, 1, Transaction('2024-05-10', 'ICA', -10.0, 'SEB', 'mat', 'butik'))
+    db.insert_transaction(path, 1, Transaction('2024-09-10', 'ICA', -10.0, 'SEB', 'mat', 'butik'))
+    shown = lambda url: re.search(r'id="budget-table" data-month="(\d+)"',
+                                  client.get(url).get_data(as_text=True)).group(1)
+    assert shown('/1/?year=2024') == '9'          # another year: the last month with data
+    assert shown('/1/?year=2024&m=2') == '2'      # the chosen month
+    assert shown('/1/?year=2024&m=13') == '9'
+    html = client.get('/1/?year=2024&m=1').get_data(as_text=True)
+    assert 'm=12' in html and 'm=2' in html       # previous/next wrap around the year
