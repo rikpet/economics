@@ -53,3 +53,18 @@ class Category:
     sub_category: str
     invert_sign: bool = True
     hidden: bool = False
+    # For expenses (invert_sign): 'variable', 'fixed' (a fixed monthly cost) or 'transfer'
+    # (shown like an expense but not counted as one, e.g. savings).
+    expense_role: str = 'variable'
+    zero_check: bool = False  # should add up to 0 every month, e.g. outlays/debt
+
+    @property
+    def counts_as_expense(self) -> bool:
+        return self.invert_sign and self.expense_role != 'transfer'
+
+    @property
+    def kind(self) -> str:
+        """income, expense, fixed or transfer - what the Categories page shows."""
+        if not self.invert_sign:
+            return 'income'
+        return {'fixed': 'fixed', 'transfer': 'transfer'}.get(self.expense_role, 'expense')

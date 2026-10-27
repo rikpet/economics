@@ -57,6 +57,19 @@ FAMILY: CategoryTemplate = [
     *_expenses("övrigt", "bankkostnader", "övrigt"),
 ]
 
+# Defaults for new categories, matched on the lower-case names.
+TRANSFER_MAINS = {"sparande"}       # shown as a cost, but not counted as an expense
+TRANSFER_SUBS = {"internöverföring"}  # transfers between one's own accounts
+FIXED_MAINS = {"hushåll"}           # fixed monthly costs
+ZERO_CHECK_SUB_PART = "skuld"       # sub-categories that should add up to 0 each month
+
+KINDS = {  # Categories page choice -> (invert_sign, expense_role)
+    "income": (False, "variable"),
+    "expense": (True, "variable"),
+    "fixed": (True, "fixed"),
+    "transfer": (True, "transfer"),
+}
+
 TEMPLATES: dict[str, CategoryTemplate] = {
     "private": PRIVATE,
     "family": FAMILY,

@@ -48,6 +48,19 @@ other way, e.g. a return) and pick a category for each; they must add up to the 
 amount. The parts then replace the original everywhere. **Change the split** on any part,
 or **Undo split**, brings you back.
 
+The budget ends with **Expenses** and **Expenses excl. fixed costs**. What counts is set
+per category under **Categories** with *Type*:
+
+- *Expense* and *Fixed expense* count as expenses; fixed ones (from the start Hushåll) are
+  left out of "Expenses excl. fixed costs".
+- *Transfer / savings* (from the start Sparande and Bokföring › Internöverföring) is shown as
+  a cost but not counted as an expense.
+- *Income* is income.
+
+*Set for group* gives a whole group the same type. Categories with **0 monthly** ticked
+(from the start Bokföring › Utlägg/skuld) are flagged on the budget page for every finished
+month where they don't add up to 0.
+
 Under **Categories** you can hide categories you don't want in the budget, such as
 Bokföring or internal transfers: a whole group with *Hide from budget*, or a single
 sub-category by unticking *Show*. Hidden categories keep their transactions but are left
@@ -61,6 +74,8 @@ and `<category>` are lower-case, with å/ä/ö written as a/a/o):
 | Entity | State | Attributes |
 | --- | --- | --- |
 | `sensor.economics_<account>_<category>` | This month's amount for the main category (expenses as positive cost). Not published for hidden categories. | `previous_month`, `year_to_date`, `sub_categories`, `month` |
+| `sensor.economics_<account>_expenses` | This month's expenses, as the budget's Expenses row | `excl_fixed_costs`, `previous_month`, `previous_month_excl_fixed_costs`, `year_to_date` |
+| `sensor.economics_<account>_debt_check` | Number of finished months this year where a *0 monthly* category is not 0 | `not_zero` (category, month, amount) |
 | `sensor.economics_<account>_unclassified` | Number of unclassified transactions | |
 | `sensor.economics_<account>_latest_transaction` | Date of the latest transaction | |
 

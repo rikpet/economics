@@ -5,13 +5,16 @@
 <p class="hint">Renaming a category also updates the transactions and issuer rules that use it.
   Hidden categories are left out of the budget, the charts and the Home Assistant sensors, but keep their transactions.
   Removing a category leaves its transactions under “Uncategorized”.</p>
+<p class="hint"><strong>Type</strong> decides the totals under the budget: <em>Expense</em> and <em>Fixed expense</em> count as expenses,
+  and fixed ones are left out of “Expenses excl. fixed costs”; <em>Transfer / savings</em> is shown as a cost but not counted as an expense;
+  <em>Income</em> counts positive amounts as income. <strong>0 monthly</strong> flags every finished month where the category does not add up to 0, e.g. outlays that should be paid back.</p>
 <div class="card">
   <h2>Add category</h2>
   <form method="post" action="{{ url_for('add_category', account_id=account.id) }}" class="row-form">
     <input type="text" name="main" placeholder="Main category" list="mains" required>
     <datalist id="mains">{% for m, _ in groups %}<option value="{{ m }}">{% endfor %}</datalist>
     <input type="text" name="sub" placeholder="Sub category" required>
-    <select name="kind"><option value="expense">Expense</option><option value="income">Income</option></select>
+    <select name="kind" aria-label="Type">{% for k, label in kind_labels.items() %}<option value="{{ k }}" {% if k == 'expense' %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
     <button type="submit">Add</button>
   </form>
 </div>
@@ -24,6 +27,12 @@
       <input type="hidden" name="main" value="{{ m }}">
       <input type="text" name="name" value="{{ m }}" required aria-label="Rename {{ m }}">
       <button type="submit" name="action" value="rename" class="secondary">Rename</button>
+      {% set group_kinds = cats|map(attribute='kind')|unique|list %}
+      <select name="kind" aria-label="Type for all of {{ m }}">
+        {% if group_kinds|length > 1 %}<option value="" selected disabled>Mixed types</option>{% endif %}
+        {% for k, label in kind_labels.items() %}<option value="{{ k }}" {% if group_kinds == [k] %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <button type="submit" name="action" value="kind" class="secondary">Set for group</button>
       {% if all_hidden %}
       <button type="submit" name="action" value="show" class="secondary">Show in budget</button>
       {% else %}
@@ -32,7 +41,7 @@
     </form>
   </div>
   <div class="cat-grid-row cat-grid-head" aria-hidden="true">
-    <span>Sub category</span><span>Group</span><span>Type</span><span>Visible</span><span class="num">Transactions</span><span></span><span></span>
+    <span>Sub category</span><span>Group</span><span>Type</span><span>Visible</span><span title="Flag months where this does not add up to 0, e.g. outlays/debt">0 monthly</span><span class="num">Transactions</span><span></span><span></span>
   </div>
   {% for c in cats %}
   <form method="post" action="{{ url_for('update_category', account_id=account.id, category_id=c.id) }}" class="cat-grid-row{% if c.hidden %} is-hidden{% endif %}">
@@ -41,10 +50,10 @@
       {% for other, _ in groups %}<option value="{{ other }}" {% if other == c.main_category %}selected{% endif %}>{{ other|capitalize }}</option>{% endfor %}
     </select>
     <select name="kind" aria-label="Type">
-      <option value="expense" {% if c.invert_sign %}selected{% endif %}>Expense</option>
-      <option value="income" {% if not c.invert_sign %}selected{% endif %}>Income</option>
+      {% for k, label in kind_labels.items() %}<option value="{{ k }}" {% if k == c.kind %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
     <label class="check"><input type="checkbox" name="visible" value="1" {% if not c.hidden %}checked{% endif %}> Show</label>
+    <label class="check" title="Flag months where this does not add up to 0"><input type="checkbox" name="zero_check" value="1" {% if c.zero_check %}checked{% endif %}> Check</label>
     <span class="num muted">{{ usage[c.id] }}</span>
     <button type="submit" name="action" value="save" class="secondary">Save</button>
     <button type="submit" name="action" value="delete" class="danger" onclick='return confirm({{ ("Remove " ~ c.main_category ~ " › " ~ c.sub_category ~ "?" ~ ((" " ~ usage[c.id] ~ " transactions will count as uncategorized.") if usage[c.id] else ""))|tojson }})'>Remove</button>

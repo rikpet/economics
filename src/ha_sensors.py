@@ -14,7 +14,15 @@ from datetime import datetime
 
 import database as db
 from app_types import Account
-from budget import hidden_categories, main_value, monthly_balances, visible_subs
+from budget import (
+    completed_months,
+    hidden_categories,
+    main_value,
+    monthly_balances,
+    summary_rows,
+    visible_subs,
+    zero_check_flags,
+)
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +46,8 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
     else:
         previous = monthly_balances(database_path, account, now.year - 1, [12])[12]
 
-    hidden = hidden_categories(db.get_categories(database_path, account.id))
+    categories = db.get_categories(database_path, account.id)
+    hidden = hidden_categories(categories)
 
     states: dict[str, dict] = {}
     for main in current.categories():
@@ -63,6 +72,45 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
                                    for sub in subs},
             },
         }
+
+    # Expense totals, as the summary rows under the budget table.
+    def totals(balances: dict) -> tuple[list[float], list[float]]:
+        expenses, variable = summary_rows(balances, categories)
+        return expenses.values, variable.values
+
+    year_expenses, year_variable = totals(this_year)
+    prev_expenses, prev_variable = totals({0: previous})
+    states[f"{prefix}_expenses"] = {
+        "state": round(year_expenses[now.month - 1], 2),
+        "attributes": {
+            "friendly_name": f"{account.name} expenses",
+            "unit_of_measurement": currency,
+            "device_class": "monetary",
+            "state_class": "total",
+            "icon": "mdi:cash-minus",
+            "account": account.name,
+            "month": now.strftime("%Y-%m"),
+            "excl_fixed_costs": round(year_variable[now.month - 1], 2),
+            "previous_month": round(prev_expenses[0], 2),
+            "previous_month_excl_fixed_costs": round(prev_variable[0], 2),
+            "year_to_date": round(sum(year_expenses[:now.month]), 2),
+        },
+    }
+
+    # Categories that should be 0 every month, checked for the finished months of the year.
+    flags = zero_check_flags(this_year, categories, completed_months(now.year, now))
+    states[f"{prefix}_debt_check"] = {
+        "state": len({f.month for f in flags}),
+        "attributes": {
+            "friendly_name": f"{account.name} months with debt not at 0",
+            "icon": "mdi:scale-unbalanced" if flags else "mdi:scale-balance",
+            "account": account.name,
+            "year": now.year,
+            "not_zero": [{"category": f"{f.main_category}/{f.sub_category}",
+                          "month": f"{now.year}-{f.month:02d}", "amount": round(f.value, 2)}
+                         for f in flags],
+        },
+    }
 
     states[f"{prefix}_unclassified"] = {
         "state": db.count_unclassified_transactions(database_path, account.id),

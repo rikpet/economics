@@ -26,13 +26,23 @@ import database as db
 import operations
 from version import __version__
 from app_types import Account, Category, IssuerClassification, SplitPart
-from budget import budget_table, cash_flow, hidden_categories, monthly_balances
-from category_templates import TEMPLATES
+from budget import (
+    budget_table,
+    cash_flow,
+    completed_months,
+    hidden_categories,
+    monthly_balances,
+    summary_rows,
+    zero_check_flags,
+)
+from category_templates import KINDS, TEMPLATES
 from utils import month_to_date
 
 ACCOUNT_COOKIE = "economics_account"
 CHARTS_COOKIE = "economics_charts"  # categories left out of the charts, per account
 TRANSACTION_FILTERS = ("year", "month", "category", "sub", "origin", "q", "sort")
+KIND_LABELS = {"income": "Income", "expense": "Expense", "fixed": "Fixed expense",
+               "transfer": "Transfer / savings"}
 STACK_SERIES = 7  # colored categories in the stacked chart; the rest are "Other"
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -139,6 +149,13 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
             return None
         return db.get_category(dbp(), account_id, int(value))
 
+    def kind_arg() -> tuple[bool, str]:
+        """The Type chosen on the Categories page as (invert_sign, expense_role)."""
+        kind = request.form.get("kind", "expense")
+        if kind not in KINDS:
+            raise ValueError(f"Unknown type: {kind}")
+        return KINDS[kind]
+
     def year_arg() -> int:
         return request.args.get("year", type=int) or datetime.now().year
 
@@ -166,6 +183,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
     @app.context_processor
     def inject():
         return {
+            "kind_labels": KIND_LABELS,
             "accounts": db.get_accounts(dbp()),
             "account": g.get("account"),
             "months": MONTHS,
@@ -203,6 +221,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         balances = monthly_balances(dbp(), account, year)
         rows = budget_table(balances, show_sub_category=show_subs, hidden=hidden)
         years = year_options(account_id)
+        flags = zero_check_flags(balances, categories, completed_months(year))
 
         @after_this_request
         def remember(response):
@@ -212,7 +231,9 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
 
         return render_template(
             "budget.html", rows=rows, year=year, years=years, show_subs=show_subs,
-            hidden_count=len(hidden),
+            hidden_count=len(hidden), summary=summary_rows(balances, categories), flags=flags,
+            flagged={(f.main_category, f.sub_category, f.month) for f in flags},
+            flagged_main={(f.main_category, f.month) for f in flags},
             unclassified=db.count_unclassified_transactions(dbp(), account_id),
         )
 
@@ -624,9 +645,12 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
     def add_category(account_id: int):
         load_account(account_id)
         try:
+            invert, role = kind_arg()
             db.add_category(dbp(), account_id, request.form.get("main", ""),
-                            request.form.get("sub", ""),
-                            invert_sign=request.form.get("kind", "expense") == "expense")
+                            request.form.get("sub", ""), invert_sign=invert,
+                            # Leave the default from the name (e.g. sparande -> transfer)
+                            # unless something other than a plain expense was chosen.
+                            expense_role=None if request.form.get("kind") == "expense" else role)
             flash("Category added.", "ok")
         except ValueError as e:
             flash(str(e), "error")
@@ -640,10 +664,12 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
                 db.delete_category(dbp(), account_id, category_id)
                 flash("Category removed.", "ok")
             else:
+                invert, role = kind_arg()
                 db.update_category(dbp(), account_id, category_id,
                                    request.form.get("main", ""), request.form.get("sub", ""),
-                                   invert_sign=request.form.get("kind", "expense") == "expense",
-                                   hidden=not request.form.get("visible"))
+                                   invert_sign=invert, expense_role=role,
+                                   hidden=not request.form.get("visible"),
+                                   zero_check=bool(request.form.get("zero_check")))
                 flash("Category saved.", "ok")
         except ValueError as e:
             flash(str(e), "error")
@@ -659,6 +685,11 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
                 db.set_category_hidden(dbp(), account_id, action == "hide", main_category=main)
                 flash(f"{main.capitalize()} is {'hidden from' if action == 'hide' else 'shown in'} "
                       "the budget.", "ok")
+            elif action == "kind":
+                invert, role = kind_arg()
+                db.set_group_kind(dbp(), account_id, main, invert, role)
+                flash(f"All of {main.capitalize()} is now "
+                      f"{KIND_LABELS[request.form.get('kind', 'expense')].lower()}.", "ok")
             else:
                 db.rename_main_category(dbp(), account_id, main, request.form.get("name", ""))
                 flash("Category renamed.", "ok")

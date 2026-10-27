@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.5.0
+
+- The budget ends with two totals: **Expenses** (every expense, but not income or savings)
+  and **Expenses excl. fixed costs** (the same without fixed monthly costs, from the start
+  Hushåll). Unclassified transactions count as expenses.
+- Each category now has a type under **Categories**: Income, Expense, Fixed expense or
+  Transfer / savings. Savings and internal transfers start as Transfer / savings and are not
+  counted as expenses; Hushåll starts as Fixed expense. Set a whole group at once with
+  *Set for group*, e.g. Boende in the family account.
+- Debt check: categories marked *0 monthly* (from the start Bokföring › Utlägg/skuld) are
+  flagged on the budget page for every finished month where they don't add up to 0, with a
+  link to that month's transactions.
+- New Home Assistant sensors per account: expenses this month (with the total excluding
+  fixed costs as an attribute) and the number of months this year where debt is not 0.
+- The charts count expenses the same way, so savings no longer show up as expenses there.
+
 ## 2.4.0
 
 - Split a transaction into several smaller ones, each with its own category and comment —

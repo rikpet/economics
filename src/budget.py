@@ -123,11 +123,12 @@ def cash_flow(balances: dict[int, Balance], categories: list[Category],
             continue
         for i, b in enumerate(balances.values()):
             value = b.get_sub_category(main, sub)
-            if c.invert_sign:  # expense, already a positive cost
+            if c.counts_as_expense:  # already a positive cost
                 expenses[i] += value
                 by_main.setdefault(main, [0.0] * len(balances))[i] += value
-            else:
+            elif not c.invert_sign:
                 income[i] += value
+            # Transfers (e.g. savings) are neither.
 
     # Unclassified transactions are mostly purchases: count them as expenses (positive cost).
     uncategorized = [-b.get("uncategorized") for b in balances.values()]
@@ -135,3 +136,87 @@ def cash_flow(balances: dict[int, Balance], categories: list[Category],
         by_main["uncategorized"] = uncategorized
         expenses = [e + u for e, u in zip(expenses, uncategorized)]
     return CashFlow(income, expenses, by_main)
+
+
+def completed_months(year: int, now: datetime | None = None) -> int:
+    """How many months of the year are over; the current month is still running."""
+    now = now or datetime.now()
+    if year < now.year:
+        return 12
+    return now.month - 1 if year == now.year else 0
+
+
+@dataclass
+class SummaryRow:
+    label: str
+    key: str
+    values: list[float]
+    hint: str = ""
+
+    @property
+    def total(self) -> float:
+        return sum(self.values)
+
+
+def summary_rows(balances: dict[int, Balance], categories: list[Category]) -> list[SummaryRow]:
+    """Totals under the budget table: all expenses, and expenses without fixed costs.
+
+    Expenses are the categories of type Expense or Fixed expense that are not hidden, plus
+    unclassified transactions (mostly purchases). Income and transfers such as savings are
+    not expenses.
+    """
+    expenses = [0.0] * len(balances)
+    fixed = [0.0] * len(balances)
+    for c in categories:
+        if c.hidden or not c.counts_as_expense:
+            continue
+        main, sub = c.main_category.lower(), c.sub_category.lower()
+        for i, b in enumerate(balances.values()):
+            value = b.get_sub_category(main, sub)
+            expenses[i] += value
+            if c.expense_role == "fixed":
+                fixed[i] += value
+    for i, b in enumerate(balances.values()):
+        expenses[i] -= b.get("uncategorized")
+    fixed_names = sorted({c.main_category.capitalize() for c in categories
+                          if c.counts_as_expense and c.expense_role == "fixed" and not c.hidden})
+    return [
+        SummaryRow("Expenses", "expenses", expenses,
+                   "Every expense category, plus unclassified transactions. Not income or "
+                   "transfers such as savings."),
+        SummaryRow("Expenses excl. fixed costs", "variable",
+                   [e - f for e, f in zip(expenses, fixed)],
+                   "Expenses without the fixed monthly costs"
+                   + (f" ({', '.join(fixed_names)})." if fixed_names else
+                      ". No category is marked as a fixed expense yet.")),
+    ]
+
+
+@dataclass
+class ZeroCheckFlag:
+    main_category: str
+    sub_category: str
+    month: int
+    value: float
+
+    @property
+    def label(self) -> str:
+        return f"{self.main_category.capitalize()} \u203a {self.sub_category.capitalize()}"
+
+
+def zero_check_flags(balances: dict[int, Balance], categories: list[Category],
+                     months_done: int) -> list[ZeroCheckFlag]:
+    """Months where a category that should add up to zero (e.g. outlays/debt) does not.
+
+    Only months that are over are checked; hidden categories are checked too.
+    """
+    flags = []
+    for c in categories:
+        if not c.zero_check:
+            continue
+        main, sub = c.main_category.lower(), c.sub_category.lower()
+        for month, b in balances.items():
+            value = b.get_sub_category(main, sub)
+            if month <= months_done and abs(value) >= 0.005:
+                flags.append(ZeroCheckFlag(main, sub, month, value))
+    return flags

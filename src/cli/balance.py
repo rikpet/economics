@@ -1,7 +1,16 @@
 from datetime import datetime
 import click
 
-from budget import budget_table, hidden_categories, monthly_balances
+from dataclasses import replace
+
+from budget import (
+    budget_table,
+    completed_months,
+    hidden_categories,
+    monthly_balances,
+    summary_rows,
+    zero_check_flags,
+)
 from cli.context import AppContext, pass_app
 from database import get_categories, get_transactions
 from printout import generate_table
@@ -20,9 +29,12 @@ def balance(app: AppContext, show_sub_category, year, month, category: tuple[str
     balances = monthly_balances(app.database_path, app.account, year,
                                 [month] if month is not None else None)
 
+    categories = get_categories(app.database_path, app.account_id)
+    if show_all:
+        categories = [replace(c, hidden=False) for c in categories]
     try:
-        hidden = set() if show_all else hidden_categories(get_categories(app.database_path, app.account_id))
-        rows = budget_table(balances, show_sub_category, list(category) or None, hidden)
+        rows = budget_table(balances, show_sub_category, list(category) or None,
+                            hidden_categories(categories))
     except ValueError as e:
         raise click.ClickException(str(e))
 
@@ -30,12 +42,20 @@ def balance(app: AppContext, show_sub_category, year, month, category: tuple[str
         [f'  - {r.label}' if r.is_sub else r.label] + [str(int(v)) for v in r.values]
         for r in rows
     ]
+    if not category:
+        table_data.append([''] * (len(balances) + 1))
+        table_data += [[s.label] + [str(int(v)) for v in s.values]
+                       for s in summary_rows(balances, categories)]
 
     click.echo(f'BUDGET SUMMARY ({app.account.name}):\n')
     click.echo(generate_table(
         header=['Category'] + [month_no_to_name(m) for m in balances],
         rows=table_data
     ))
+
+    for flag in zero_check_flags(balances, categories, completed_months(year)):
+        click.echo(f'WARNING: {flag.main_category}/{flag.sub_category} is {int(flag.value)}, '
+                   f'not 0, in {month_no_to_name(flag.month)}')
 
 
 @click.command()

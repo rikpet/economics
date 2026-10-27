@@ -5,7 +5,16 @@ import sqlite3
 from typing import Iterator, List, Tuple
 
 from app_types import Account, Category, IssuerClassification, ReadTransaction, SplitPart, Transaction
-from category_templates import PRIVATE, TEMPLATES
+from category_templates import (
+    FIXED_MAINS,
+    PRIVATE,
+    TEMPLATES,
+    TRANSFER_MAINS,
+    TRANSFER_SUBS,
+    ZERO_CHECK_SUB_PART,
+)
+
+EXPENSE_ROLES = ('variable', 'fixed', 'transfer')
 
 DEFAULT_ACCOUNT_NAME = 'Privat'
 
@@ -205,9 +214,39 @@ def _migration_4_split_transactions(c: sqlite3.Cursor):
     c.execute('CREATE INDEX idx_transactions_parent ON transactions(parent_id)')
 
 
+def _migration_5_expense_roles(c: sqlite3.Cursor):
+    """Categories say whether they count as expenses or fixed costs, and whether they should
+    add up to zero each month."""
+    c.execute("ALTER TABLE categories ADD COLUMN expense_role TEXT NOT NULL DEFAULT 'variable'")
+    c.execute('ALTER TABLE categories ADD COLUMN zero_check INTEGER NOT NULL DEFAULT 0')
+    c.execute("UPDATE categories SET expense_role = 'transfer' "
+              "WHERE main_category = 'sparande' OR sub_category = 'internöverföring'")
+    c.execute("UPDATE categories SET expense_role = 'fixed' WHERE main_category = 'hushåll'")
+    c.execute("UPDATE categories SET zero_check = 1 WHERE sub_category LIKE '%skuld%'")
+
+
 # Append-only: users have live databases at every version.
 MIGRATIONS = [_migration_1_initial, _migration_2_accounts, _migration_3_hidden_categories,
-              _migration_4_split_transactions]
+              _migration_4_split_transactions, _migration_5_expense_roles]
+
+
+def _apply_category_defaults(conn: sqlite3.Connection, account_id: int,
+                             category_id: int | None = None):
+    """Set expense role and zero check on new categories from their names."""
+    only = ' AND id = ?' if category_id is not None else ''
+    extra = (category_id,) if category_id is not None else ()
+    for main in TRANSFER_MAINS:
+        conn.execute(f"UPDATE categories SET expense_role = 'transfer' "
+                     f"WHERE account_id = ? AND main_category = ?{only}", (account_id, main, *extra))
+    for sub in TRANSFER_SUBS:
+        conn.execute(f"UPDATE categories SET expense_role = 'transfer' "
+                     f"WHERE account_id = ? AND sub_category = ?{only}", (account_id, sub, *extra))
+    for main in FIXED_MAINS:
+        conn.execute(f"UPDATE categories SET expense_role = 'fixed' "
+                     f"WHERE account_id = ? AND main_category = ?{only}", (account_id, main, *extra))
+    conn.execute(f"UPDATE categories SET zero_check = 1 "
+                 f"WHERE account_id = ? AND sub_category LIKE ?{only}",
+                 (account_id, f'%{ZERO_CHECK_SUB_PART}%', *extra))
 
 
 def _seed_categories(c: sqlite3.Cursor, account_id: int, template, start_position: int = 0):
@@ -318,6 +357,7 @@ def create_account(database_path: str, name: str, template: str = 'empty',
             raise ValueError(f'An account named {name!r} already exists.') from e
         account_id = c.lastrowid
         _seed_categories(conn.cursor(), account_id, TEMPLATES[template])
+        _apply_category_defaults(conn, account_id)
         return account_id
 
 
@@ -358,7 +398,8 @@ def delete_account(database_path: str, account_id: int):
 def _category(row: sqlite3.Row) -> Category:
     return Category(id=row['id'], main_category=row['main_category'],
                     sub_category=row['sub_category'], invert_sign=bool(row['invert_sign']),
-                    hidden=bool(row['hidden']))
+                    hidden=bool(row['hidden']), expense_role=row['expense_role'],
+                    zero_check=bool(row['zero_check']))
 
 
 def get_categories(database_path: str, account_id: int) -> list[Category]:
@@ -376,7 +417,7 @@ def get_category(database_path: str, account_id: int, category_id: int) -> Categ
 
 
 def add_category(database_path: str, account_id: int, main_category: str, sub_category: str,
-                 invert_sign: bool = True) -> int:
+                 invert_sign: bool = True, expense_role: str | None = None) -> int:
     main_category = main_category.strip().lower()
     sub_category = sub_category.strip().lower()
     if not main_category or not sub_category:
@@ -399,11 +440,22 @@ def add_category(database_path: str, account_id: int, main_category: str, sub_ca
                              (account_id, main_category, sub_category, int(invert_sign), position))
         except sqlite3.IntegrityError as e:
             raise ValueError(f'Category {main_category}/{sub_category} already exists.') from e
+        _apply_category_defaults(conn, account_id, c.lastrowid)
+        if expense_role is not None:
+            conn.execute('UPDATE categories SET expense_role = ? WHERE id = ?',
+                         (_check_role(expense_role), c.lastrowid))
         return c.lastrowid
 
 
+def _check_role(role: str) -> str:
+    if role not in EXPENSE_ROLES:
+        raise ValueError(f'Unknown expense role: {role}')
+    return role
+
+
 def update_category(database_path: str, account_id: int, category_id: int, main_category: str,
-                    sub_category: str, invert_sign: bool, hidden: bool | None = None):
+                    sub_category: str, invert_sign: bool, hidden: bool | None = None,
+                    expense_role: str | None = None, zero_check: bool | None = None):
     """Rename and/or change a category. Transactions and issuer rules follow a rename."""
     main_category = main_category.strip().lower()
     sub_category = sub_category.strip().lower()
@@ -421,6 +473,12 @@ def update_category(database_path: str, account_id: int, category_id: int, main_
             if hidden is not None:
                 conn.execute('UPDATE categories SET hidden = ? WHERE id = ?',
                              (int(hidden), category_id))
+            if expense_role is not None:
+                conn.execute('UPDATE categories SET expense_role = ? WHERE id = ?',
+                             (_check_role(expense_role), category_id))
+            if zero_check is not None:
+                conn.execute('UPDATE categories SET zero_check = ? WHERE id = ?',
+                             (int(zero_check), category_id))
         except sqlite3.IntegrityError as e:
             raise ValueError(f'Category {main_category}/{sub_category} already exists.') from e
         for table in ('transactions', 'issuer_classifications'):
@@ -442,6 +500,16 @@ def set_category_hidden(database_path: str, account_id: int, hidden: bool,
             conn.execute('UPDATE categories SET hidden = ? WHERE account_id = ? '
                          'AND main_category = ?',
                          (int(hidden), account_id, main_category.strip().lower()))
+
+
+def set_group_kind(database_path: str, account_id: int, main_category: str,
+                   invert_sign: bool, expense_role: str):
+    """Give every sub-category of a main category the same kind (income/expense/fixed/...)."""
+    with _connect(database_path) as conn:
+        conn.execute('UPDATE categories SET invert_sign = ?, expense_role = ? '
+                     'WHERE account_id = ? AND main_category = ?',
+                     (int(invert_sign), _check_role(expense_role), account_id,
+                      main_category.strip().lower()))
 
 
 def rename_main_category(database_path: str, account_id: int, old: str, new: str):

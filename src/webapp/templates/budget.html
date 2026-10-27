@@ -17,6 +17,18 @@
   <a href="{{ url_for('classify', account_id=account.id) }}">Classify them</a></div>
 {% endif %}
 
+{% if flags %}
+<div class="flash warn" role="alert">
+  <strong>Should be 0 every month:</strong>
+  <ul class="flag-list">
+  {% for label, items in flags|groupby('label') %}
+    <li>{{ label }} is
+      {% for f in items %}<a href="{{ url_for('transactions', account_id=account.id, year=year, month=f.month, category=f.main_category, sub=f.sub_category) }}">{{ f.value|money }} kr in {{ months[f.month - 1] }}</a>{{ ', ' if not loop.last }}{% endfor %}.</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 <div class="table-wrap">
 <table class="budget">
   <thead>
@@ -27,7 +39,8 @@
     <tr class="{{ 'sub' if r.is_sub else 'main' }}">
       <th scope="row">{{ r.label }}</th>
       {% for v in r.values %}
-      <td class="num">
+      {% set is_flagged = ((r.main_category, r.sub_category, loop.index) in flagged) if r.is_sub else ((r.main_category, loop.index) in flagged_main) %}
+      <td class="num{% if is_flagged %} flag{% endif %}"{% if is_flagged %} title="Should be 0 every month"{% endif %}>
         {% if v %}<a href="{{ url_for('transactions', account_id=account.id, year=year, month=loop.index, category=r.main_category, sub=r.sub_category or '') }}">{{ v|money }}</a>{% else %}<span class="muted">–</span>{% endif %}
       </td>
       {% endfor %}
@@ -35,9 +48,20 @@
     </tr>
   {% endfor %}
   </tbody>
+  <tfoot>
+  {% for s in summary %}
+    <tr class="summary">
+      <th scope="row" title="{{ s.hint }}">{{ s.label }}</th>
+      {% for v in s.values %}<td class="num">{% if v %}{{ v|money }}{% else %}<span class="muted">–</span>{% endif %}</td>{% endfor %}
+      <td class="num total">{{ s.total|money }}</td>
+    </tr>
+  {% endfor %}
+  </tfoot>
 </table>
 </div>
 <p class="hint">Expense categories are shown as positive costs. Click an amount to see its transactions.
+{% for s in summary %}<br><strong>{{ s.label }}</strong>: {{ s.hint }}{% endfor %}
+<br>Which categories are expenses, fixed costs or transfers, and which should be 0 every month, is set under <a href="{{ url_for('categories', account_id=account.id) }}">Categories</a>.
 {% if hidden_count %}{{ hidden_count }} hidden {{ 'category is' if hidden_count == 1 else 'categories are' }} not shown (<a href="{{ url_for('categories', account_id=account.id) }}">manage</a>).{% endif %}
 See also the <a href="{{ url_for('charts', account_id=account.id, year=year) }}">charts</a>.
 {% if account.derive_allowance %}<br>Inkomst › Månadspeng is calculated as Bokföring › Inkomst − Bokföring › Familjekonto − last month's Bokföring › Familjeutlägg.{% endif %}</p>
