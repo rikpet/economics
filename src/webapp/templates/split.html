@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% from "_macros.html" import category_select, amount %}
+{% block title %}Split transaction{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ 'Change split' if t.is_split else 'Split transaction' }}</h1></div>
+<div class="card">
+  <dl class="facts">
+    <dt>Issuer</dt><dd>{{ t.issuer }}</dd>
+    <dt>Date</dt><dd>{{ t.date }}</dd>
+    <dt>Amount</dt><dd><span class="amount {{ 'neg' if t.amount < 0 else 'pos' }}">{{ t.amount|exact }} kr</span></dd>
+    <dt>Origin</dt><dd>{{ t.origin }}</dd>
+  </dl>
+  <p class="hint">Divide the amount into parts with their own category, e.g. groceries and household items on one receipt.
+    The parts replace the original in the budget, the charts and the lists; they must add up to {{ (t.amount * sign)|exact }} kr.
+    {% if sign < 0 %}Enter amounts as positive numbers; a minus sign makes a part go the other way, like a return.{% endif %}</p>
+
+  {% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+
+  <form method="post" id="split-form" data-total="{{ (t.amount * sign)|round(2) }}">
+    <div class="split-rows" id="split-rows">
+      <div class="split-row split-head" aria-hidden="true"><span>Amount (kr)</span><span>Category</span><span>Comment</span><span></span></div>
+      {% for r in rows %}
+      <div class="split-row">
+        <input type="text" name="amount" value="{{ r.amount }}" inputmode="decimal" autocomplete="off" aria-label="Amount" placeholder="0">
+        {% set selected = categories_by_id.get(r.category) %}
+        {{ category_select(groups, selected.main_category if selected else none, selected.sub_category if selected else none, placeholder="Unclassified") }}
+        <input type="text" name="comment" value="{{ r.comment }}" aria-label="Comment" placeholder="Comment (optional)">
+        <button type="button" class="secondary remove-row" aria-label="Remove part">×</button>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="split-footer">
+      <button type="button" class="secondary" id="add-row">Add part</button>
+      <span class="split-left" id="split-left" aria-live="polite"></span>
+    </div>
+    <div class="actions">
+      <button type="submit">Save split</button>
+      <a href="{{ back }}" class="button secondary">Cancel</a>
+    </div>
+  </form>
+
+  {% if t.is_split %}
+  <form method="post" action="{{ url_for('unsplit_transaction', account_id=account.id, transaction_id=t.id, back=back_filters) }}" class="unsplit">
+    <button type="submit" class="danger" onclick='return confirm({{ "Remove the parts and count the original transaction again?"|tojson }})'>Undo split</button>
+  </form>
+  {% endif %}
+
+  {% if t.modification_log %}
+  <h2>History</h2>
+  <pre class="log">{{ t.modification_log }}</pre>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  const form = document.getElementById("split-form");
+  const rows = document.getElementById("split-rows");
+  const left = document.getElementById("split-left");
+  const total = Math.round(parseFloat(form.dataset.total) * 100);
+  const parse = (text) => {
+    const t = text.replace(/[\s ]|kr/g, "").replace("−", "-").replace(",", ".");
+    return t === "" ? 0 : Math.round(parseFloat(t) * 100);
+  };
+  const kr = (ore) => (ore / 100).toLocaleString("sv-SE", { minimumFractionDigits: ore % 100 ? 2 : 0 }) + " kr";
+
+  function update() {
+    const values = [...rows.querySelectorAll('input[name="amount"]')].map((i) => parse(i.value));
+    if (values.some(Number.isNaN)) {
+      left.textContent = "Check the amounts.";
+      left.className = "split-left bad";
+      return;
+    }
+    const rest = total - values.reduce((a, b) => a + b, 0);
+    left.textContent = rest === 0 ? "Adds up." : `${kr(rest)} left to divide`;
+    left.className = "split-left " + (rest === 0 ? "ok" : "bad");
+  }
+
+  function wire(row) {
+    row.querySelector(".remove-row").addEventListener("click", () => {
+      if (rows.querySelectorAll(".split-row:not(.split-head)").length > 2) row.remove();
+      else row.querySelectorAll("input").forEach((i) => { i.value = ""; });
+      update();
+    });
+  }
+
+  rows.querySelectorAll(".split-row:not(.split-head)").forEach(wire);
+  rows.addEventListener("input", update);
+  document.getElementById("add-row").addEventListener("click", () => {
+    const all = rows.querySelectorAll(".split-row:not(.split-head)");
+    const row = all[all.length - 1].cloneNode(true);
+    row.querySelectorAll("input").forEach((i) => { i.value = ""; });
+    row.querySelector("select").selectedIndex = 0;
+    rows.appendChild(row);
+    wire(row);
+    // Suggest what is left, so the last part is one tap.
+    const values = [...rows.querySelectorAll('input[name="amount"]')].map((i) => parse(i.value));
+    const rest = total - values.reduce((a, b) => a + b, 0);
+    if (rest) row.querySelector('input[name="amount"]').value = (rest / 100).toString().replace(".", ",");
+    row.querySelector('input[name="amount"]').focus();
+    update();
+  });
+  update();
+})();
+</script>
+{% endblock %}

@@ -233,3 +233,26 @@ table.budget td.total { font-weight: 600; }
 @media (max-width: 640px) {
   .chip span, .chip-action { font-size: 16px !important; }
 }
+
+/* ---- split transaction ---------------------------------------------------------------- */
+.split-rows { display: grid; gap: .45rem; margin-bottom: .6rem; }
+.split-row { display: grid; gap: .5rem; align-items: center; grid-template-columns: 8rem minmax(12rem, 1.3fr) minmax(8rem, 1fr) 2.4rem; }
+.split-row > * { min-width: 0; }
+.split-row input[name="amount"] { text-align: right; font-variant-numeric: tabular-nums; }
+.split-head { font-size: .8rem; color: var(--muted); }
+.split-row .remove-row { justify-content: center; padding: 0; }
+.split-footer { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-bottom: 1rem; }
+.split-left { font-size: .9rem; }
+.split-left.ok { color: var(--pos); }
+.split-left.bad { color: var(--neg); }
+.unsplit { margin-top: 1rem; }
+form + h2, .unsplit + h2 { margin-top: 1.5rem; }
+.badge.split { background: var(--surface-2); border-color: var(--border); }
+@media (max-width: 640px) {
+  .split-row { grid-template-columns: 1fr 2.4rem; }
+  .split-row > input[name="amount"] { grid-column: 1; }
+  .split-row > select, .split-row > input[name="comment"] { grid-column: 1 / -1; }
+  .split-row .remove-row { grid-column: 2; grid-row: 1; }
+  .split-row { padding-bottom: .5rem; border-bottom: 1px solid var(--border); }
+  .split-head { display: none; }
+}

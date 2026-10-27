@@ -42,6 +42,12 @@ under **Categories**. Switch account with the selector at the top.
    charts you can pick months and categories; clicking a category in a chart legend hides
    it from the charts (the budget is not affected).
 
+To divide one purchase over several categories, open the transaction (**Edit**) and choose
+**Split…**. Enter the parts' amounts as positive numbers (a minus sign makes a part go the
+other way, e.g. a return) and pick a category for each; they must add up to the original
+amount. The parts then replace the original everywhere. **Change the split** on any part,
+or **Undo split**, brings you back.
+
 Under **Categories** you can hide categories you don't want in the budget, such as
 Bokföring or internal transfers: a whole group with *Hide from budget*, or a single
 sub-category by unticking *Show*. Hidden categories keep their transactions but are left

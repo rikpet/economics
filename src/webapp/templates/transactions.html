@@ -47,7 +47,7 @@
   {% for t in rows %}
     <tr>
       <td class="nowrap">{{ t.date }}</td>
-      <td>{{ t.issuer }}</td>
+      <td>{{ t.issuer }}{% if t.parent_id %} <span class="badge split" title="Part of a split transaction">split</span>{% endif %}</td>
       <td class="num">{{ amount(t.amount) }}</td>
       <td>{{ t.origin }}</td>
       <td>{% if t.main_category %}{{ t.main_category|capitalize }} › {{ (t.sub_category or '')|capitalize }}{% else %}<span class="badge">Unclassified</span>{% endif %}</td>

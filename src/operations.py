@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import database as db
-from app_types import IssuerClassification, Transaction
+from app_types import IssuerClassification, SplitPart, Transaction
 from parser import parse_remember_transactions, parse_seb_transactions
 
 ORIGINS = {
@@ -113,3 +113,37 @@ def modify_transaction(database_path: str, account_id: int, transaction_id: int,
     db.update_transaction(database_path, account_id, transaction_id, main_category,
                           sub_category, date, comment=comment, modification_log=new_log)
     return True
+
+
+def parse_amount(text: str) -> float | None:
+    """'1 234,50', '1234.5', '-300' -> float. Empty -> None."""
+    text = (text or "").strip().replace(" ", "").replace(" ", "").replace("kr", "")
+    text = text.replace("−", "-").replace(",", ".")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        raise ValueError(f"Not an amount: {text!r}") from None
+
+
+def split_transaction(database_path: str, account_id: int, transaction_id: int,
+                      parts: list[SplitPart]) -> list[int]:
+    """Split a transaction into parts that add up to its amount (or change its split)."""
+    trans = db.get_transaction(database_path, account_id, transaction_id)
+    if trans is None:
+        raise ValueError(f"No transaction found with id {transaction_id}.")
+    amounts = ", ".join(f"{p.amount:.2f}" for p in parts)
+    log_entry = (f"[{datetime.now().strftime('%Y-%m-%d')}] "
+                 f"{'re-split' if trans.is_split else 'split'} into {len(parts)} parts: {amounts}")
+    new_log = f"{trans.modification_log}\n{log_entry}" if trans.modification_log else log_entry
+    return db.split_transaction(database_path, account_id, transaction_id, parts, new_log)
+
+
+def unsplit_transaction(database_path: str, account_id: int, transaction_id: int):
+    trans = db.get_transaction(database_path, account_id, transaction_id)
+    if trans is None or not trans.is_split:
+        raise ValueError("The transaction is not split.")
+    log_entry = f"[{datetime.now().strftime('%Y-%m-%d')}] split undone"
+    new_log = f"{trans.modification_log}\n{log_entry}" if trans.modification_log else log_entry
+    db.unsplit_transaction(database_path, account_id, transaction_id, new_log)

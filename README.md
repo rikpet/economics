@@ -39,6 +39,8 @@ econ -a Familj balance --year 2026 --show-sub-category   # --all includes hidden
 econ -a Familj category list
 econ -a Familj category add boende el
 econ -a Familj issuer list
+econ -a Familj trans split 42 --part 700:mat/butik --part 300:hushåll/övrigt:lampa
+econ -a Familj trans unsplit 42
 
 econ web                                         # web interface on http://127.0.0.1:8100
 econ advanced backup backup.db

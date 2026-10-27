@@ -24,7 +24,8 @@ config.yaml, Dockerfile,     the HA add-on, at the repo root (Supervisor finds a
 repository.yaml              HA add-on repository manifest
 DOCS.md, CHANGELOG.md        shown to the user in HA (docs tab, update dialog)
 src/                         flat modules, imported as top-level names (`import database`)
-  database.py                SQLite layer: migrations, accounts, categories, transactions, rules
+  database.py                SQLite layer: migrations, accounts, categories, transactions
+                             (incl. splits), issuer rules
   balance.py                 Balance: one month's totals per (main, sub) category
   budget.py                  monthly_balances(), budget_table(), cash_flow(), hidden-category helpers
   operations.py              import/classify/modify actions shared by CLI and web
@@ -105,6 +106,14 @@ raising, so the budget never breaks when categories are edited.
 calculated, not imported: `bokföring/inkomst − bokföring/familjekonto − previous month's
 bokföring/familjeutlägg`. `monthly_balances()` wires up the previous month (December of the
 year before for January).
+
+**Split transactions** (migration 4): the original row stays with `is_split = 1` so a
+re-import still finds its verification number, and its parts are new rows with
+`parent_id` pointing at it, the same date/issuer/origin and no verification number. Every
+read that sums or lists transactions excludes the originals via `database.COUNTED`
+(`is_split = 0`) — use it in any new query. Parts must add up to the original to the öre and
+can't be split themselves; re-splitting replaces the parts, unsplitting deletes them. In the
+UI amounts are entered in the original's direction (positive numbers for an expense).
 
 **Hidden categories** (`categories.hidden`) are left out of the budget table, the charts and
 the sensors, including their share of the main category's total. They still exist for

@@ -4,15 +4,20 @@ import os
 import sqlite3
 from typing import Iterator, List, Tuple
 
-from app_types import Account, Category, IssuerClassification, ReadTransaction, Transaction
+from app_types import Account, Category, IssuerClassification, ReadTransaction, SplitPart, Transaction
 from category_templates import PRIVATE, TEMPLATES
 
 DEFAULT_ACCOUNT_NAME = 'Privat'
 
 TRANSACTION_COLUMNS = (
     'id, date, issuer, amount, origin, main_category, sub_category, comment, '
-    'verification_number, modification_log'
+    'verification_number, modification_log, parent_id, is_split'
 )
+
+# A split transaction's original stays in the table, so a re-import of the bank file still
+# sees its verification number, but only its parts count anywhere.
+COUNTED = 'is_split = 0'
+
 
 
 def _lower(value: str | None) -> str | None:
@@ -109,8 +114,10 @@ def _migration_2_accounts(c: sqlite3.Cursor):
         verification_number TEXT,
         modification_log TEXT
     )''')
-    c.execute(f'INSERT INTO transactions_new (account_id, {TRANSACTION_COLUMNS}) '
-              f'SELECT 1, {TRANSACTION_COLUMNS} FROM transactions')
+    columns = ('id, date, issuer, amount, origin, main_category, sub_category, comment, '
+               'verification_number, modification_log')  # the columns as of this migration
+    c.execute(f'INSERT INTO transactions_new (account_id, {columns}) '
+              f'SELECT 1, {columns} FROM transactions')
     c.execute('DROP TABLE transactions')
     c.execute('ALTER TABLE transactions_new RENAME TO transactions')
     c.execute('CREATE UNIQUE INDEX idx_transactions_verification_number '
@@ -191,8 +198,16 @@ def _migration_3_hidden_categories(c: sqlite3.Cursor):
     c.execute('ALTER TABLE categories ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0')
 
 
+def _migration_4_split_transactions(c: sqlite3.Cursor):
+    """A transaction can be split into parts that replace it in every sum."""
+    c.execute('ALTER TABLE transactions ADD COLUMN parent_id INTEGER REFERENCES transactions(id)')
+    c.execute('ALTER TABLE transactions ADD COLUMN is_split INTEGER NOT NULL DEFAULT 0')
+    c.execute('CREATE INDEX idx_transactions_parent ON transactions(parent_id)')
+
+
 # Append-only: users have live databases at every version.
-MIGRATIONS = [_migration_1_initial, _migration_2_accounts, _migration_3_hidden_categories]
+MIGRATIONS = [_migration_1_initial, _migration_2_accounts, _migration_3_hidden_categories,
+              _migration_4_split_transactions]
 
 
 def _seed_categories(c: sqlite3.Cursor, account_id: int, template, start_position: int = 0):
@@ -456,6 +471,7 @@ def category_usage(database_path: str, account_id: int, main_category: str,
                    sub_category: str) -> int:
     with _connect(database_path) as conn:
         return conn.execute('SELECT COUNT(*) FROM transactions WHERE account_id = ? '
+                            f'AND {COUNTED} '
                             'AND py_lower(main_category) = ? AND py_lower(sub_category) = ?',
                             (account_id, main_category.lower(),
                              sub_category.lower())).fetchone()[0]
@@ -483,7 +499,9 @@ def _read_transaction(row: sqlite3.Row) -> ReadTransaction:
         sub_category=row['sub_category'],
         comment=row['comment'],
         verification_number=row['verification_number'],
-        modification_log=row['modification_log']
+        modification_log=row['modification_log'],
+        parent_id=row['parent_id'],
+        is_split=bool(row['is_split']),
     )
 
 
@@ -538,7 +556,7 @@ def update_transaction(database_path: str, account_id: int, transaction_id: int,
 
 def get_transactions(database_path: str, account_id: int, start_date: datetime | None = None, end_date: datetime | None = None, main_category: list[str] | None = None, sub_category: list[str] | None = None, origin: str | None = None, search: str | None = None) -> list[ReadTransaction]:
     query = f'SELECT {TRANSACTION_COLUMNS} FROM transactions'
-    conditions = ['account_id = ?']
+    conditions = ['account_id = ?', COUNTED]
     params: list = [account_id]
 
     if start_date:
@@ -576,7 +594,8 @@ def get_transactions(database_path: str, account_id: int, start_date: datetime |
 def get_unclassified_transactions(database_path: str, account_id: int) -> list[ReadTransaction]:
     with _connect(database_path) as conn:
         rows = conn.execute(f'SELECT {TRANSACTION_COLUMNS} FROM transactions '
-                            'WHERE account_id = ? AND (main_category IS NULL OR sub_category IS NULL) '
+                            f'WHERE account_id = ? AND {COUNTED} '
+                            'AND (main_category IS NULL OR sub_category IS NULL) '
                             'ORDER BY date, id', (account_id,)).fetchall()
         return [_read_transaction(r) for r in rows]
 
@@ -590,7 +609,7 @@ def count_transactions(database_path: str, account_id: int) -> int:
 def count_unclassified_transactions(database_path: str, account_id: int) -> int:
     with _connect(database_path) as conn:
         return conn.execute('SELECT COUNT(*) FROM transactions WHERE account_id = ? '
-                            'AND (main_category IS NULL OR sub_category IS NULL)',
+                            f'AND {COUNTED} AND (main_category IS NULL OR sub_category IS NULL)',
                             (account_id,)).fetchone()[0]
 
 
@@ -599,6 +618,67 @@ def get_transaction(database_path: str, account_id: int, dataid: int) -> ReadTra
         row = conn.execute(f'SELECT {TRANSACTION_COLUMNS} FROM transactions '
                            'WHERE account_id = ? AND id = ?', (account_id, dataid)).fetchone()
         return _read_transaction(row) if row else None
+
+
+def get_split_parts(database_path: str, account_id: int, parent_id: int) -> list[ReadTransaction]:
+    with _connect(database_path) as conn:
+        rows = conn.execute(f'SELECT {TRANSACTION_COLUMNS} FROM transactions '
+                            'WHERE account_id = ? AND parent_id = ? ORDER BY id',
+                            (account_id, parent_id)).fetchall()
+        return [_read_transaction(r) for r in rows]
+
+
+def split_transaction(database_path: str, account_id: int, transaction_id: int,
+                      parts: list[SplitPart], parent_log: str | None = None) -> list[int]:
+    """Replace a transaction by parts that add up to its amount. Splitting an already split
+    transaction replaces its parts. Returns the ids of the parts."""
+    if len(parts) < 2:
+        raise ValueError('A split needs at least two parts.')
+    with _connect(database_path) as conn:
+        parent = conn.execute(f'SELECT {TRANSACTION_COLUMNS} FROM transactions '
+                              'WHERE account_id = ? AND id = ?',
+                              (account_id, transaction_id)).fetchone()
+        if parent is None:
+            raise ValueError(f'No transaction found with id {transaction_id}.')
+        if parent['parent_id'] is not None:
+            raise ValueError('This is a part of a split transaction; change the split of the '
+                             'original instead.')
+        if any(round(p.amount * 100) == 0 for p in parts):
+            raise ValueError('Every part needs an amount.')
+        total = sum(round(p.amount * 100) for p in parts)
+        if total != round(parent['amount'] * 100):
+            raise ValueError(f'The parts add up to {total / 100:.2f}, '
+                             f'not {parent["amount"]:.2f}.')
+
+        conn.execute('DELETE FROM transactions WHERE account_id = ? AND parent_id = ?',
+                     (account_id, transaction_id))
+        ids = []
+        for p in parts:
+            c = conn.execute('INSERT INTO transactions (account_id, date, issuer, amount, origin, '
+                             'main_category, sub_category, comment, parent_id, modification_log) '
+                             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                             (account_id, parent['date'], parent['issuer'],
+                              round(p.amount, 2), parent['origin'], p.main_category,
+                              p.sub_category, p.comment, transaction_id,
+                              f'Part of transaction #{transaction_id}'))
+            ids.append(c.lastrowid)
+        conn.execute('UPDATE transactions SET is_split = 1, '
+                     'modification_log = COALESCE(?, modification_log) '
+                     'WHERE account_id = ? AND id = ?',
+                     (parent_log, account_id, transaction_id))
+        return ids
+
+
+def unsplit_transaction(database_path: str, account_id: int, transaction_id: int,
+                        parent_log: str | None = None):
+    """Remove the parts of a split transaction so the original counts again."""
+    with _connect(database_path) as conn:
+        conn.execute('DELETE FROM transactions WHERE account_id = ? AND parent_id = ?',
+                     (account_id, transaction_id))
+        conn.execute('UPDATE transactions SET is_split = 0, '
+                     'modification_log = COALESCE(?, modification_log) '
+                     'WHERE account_id = ? AND id = ?',
+                     (parent_log, account_id, transaction_id))
 
 
 def latest_transaction_date(database_path: str, account_id: int) -> str | None:

@@ -25,7 +25,7 @@ from flask.sessions import SecureCookieSessionInterface
 import database as db
 import operations
 from version import __version__
-from app_types import Account, Category, IssuerClassification
+from app_types import Account, Category, IssuerClassification, SplitPart
 from budget import budget_table, cash_flow, hidden_categories, monthly_balances
 from category_templates import TEMPLATES
 from utils import month_to_date
@@ -78,6 +78,19 @@ def period_label(months: list[int]) -> str:
                      for r in runs)
 
 
+def format_amount(value: float) -> str:
+    """An amount for an input field: 1234.5 -> '1234,50', 300.0 -> '300'."""
+    if round(value, 2) == round(value):
+        return str(int(round(value)))
+    return f"{value:.2f}".replace(".", ",")
+
+
+def format_exact(value: float) -> str:
+    """Kronor with öre when there are any: -808.26 -> '−808,26', 300 -> '300'."""
+    text = f"{abs(value):,.2f}".replace(",", "\u00a0").replace(".", ",").removesuffix(",00")
+    return ("\u2212" if value < 0 else "") + text
+
+
 def format_money(value: float | None) -> str:
     if value is None:
         return ""
@@ -101,6 +114,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
     app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
     app.wsgi_app = IngressMiddleware(app.wsgi_app)
     app.jinja_env.filters["money"] = format_money
+    app.jinja_env.filters["exact"] = format_exact
 
     db.create_tables(database_path)
 
@@ -361,6 +375,10 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         trans = db.get_transaction(dbp(), account_id, transaction_id)
         if trans is None:
             abort(404)
+        if trans.is_split:  # the original of a split is edited through its parts
+            return redirect(url_for("split_transaction", account_id=account_id,
+                                    transaction_id=transaction_id,
+                                    back=request.args.get("back", "")))
 
         if request.method == "POST":
             category = category_by_id(account_id, request.form.get("category"))
@@ -385,9 +403,89 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
             flash("Transaction saved." if changed else "Nothing changed.", "ok")
             return redirect(transactions_url(account_id, request.args.get("back")))
 
-        return render_template("transaction_edit.html", t=trans,
+        parent = (db.get_transaction(dbp(), account_id, trans.parent_id)
+                  if trans.parent_id else None)
+        return render_template("transaction_edit.html", t=trans, parent=parent,
                                groups=category_choices(account_id),
+                               back_filters=request.args.get("back", ""),
                                back=transactions_url(account_id, request.args.get("back")))
+
+    @app.route("/<int:account_id>/transactions/<int:transaction_id>/split",
+               methods=["GET", "POST"])
+    def split_transaction(account_id: int, transaction_id: int):
+        """Split a transaction into parts, each with its own amount and category.
+
+        Amounts are entered in the original's direction (an expense of -1 000 kr is split as
+        700 and 300); a minus sign turns a part the other way, e.g. a return in the same
+        purchase.
+        """
+        load_account(account_id)
+        trans = db.get_transaction(dbp(), account_id, transaction_id)
+        if trans is None:
+            abort(404)
+        back_filters = request.args.get("back", "")
+        if trans.parent_id:
+            return redirect(url_for("split_transaction", account_id=account_id,
+                                    transaction_id=trans.parent_id, back=back_filters))
+        sign = -1 if trans.amount < 0 else 1
+        error = None
+
+        if request.method == "POST":
+            rows = list(zip(request.form.getlist("amount"), request.form.getlist("category"),
+                            request.form.getlist("comment")))
+            try:
+                parts = []
+                for amount_text, category_id, comment in rows:
+                    value = operations.parse_amount(amount_text)
+                    if value is None:
+                        continue
+                    category = category_by_id(account_id, category_id)
+                    parts.append(SplitPart(
+                        amount=value * sign,
+                        main_category=category.main_category if category else None,
+                        sub_category=category.sub_category if category else None,
+                        comment=comment.strip() or None,
+                    ))
+                operations.split_transaction(dbp(), account_id, transaction_id, parts)
+            except ValueError as e:
+                error = str(e)
+            else:
+                flash(f"Split into {len(parts)} transactions.", "ok")
+                return redirect(transactions_url(account_id, back_filters))
+            entered = [{"amount": a, "category": int(c) if c.isdigit() else None, "comment": m}
+                       for a, c, m in rows]
+        else:
+            existing = db.get_split_parts(dbp(), account_id, transaction_id)
+            categories = {(c.main_category, c.sub_category): c.id
+                          for c in db.get_categories(dbp(), account_id)}
+
+            def row(amount: float | None, main: str | None, sub: str | None, comment: str | None):
+                key = ((main or "").lower(), (sub or "").lower())
+                return {"amount": format_amount(amount * sign) if amount is not None else "",
+                        "category": categories.get(key), "comment": comment or ""}
+
+            if existing:
+                entered = [row(p.amount, p.main_category, p.sub_category, p.comment)
+                           for p in existing]
+            else:
+                entered = [row(trans.amount, trans.main_category, trans.sub_category,
+                               trans.comment), row(None, None, None, None)]
+
+        groups = category_choices(account_id)
+        return render_template("split.html", t=trans, rows=entered, error=error, sign=sign,
+                               groups=groups, back_filters=back_filters,
+                               categories_by_id={c.id: c for _, cats in groups for c in cats},
+                               back=transactions_url(account_id, back_filters))
+
+    @app.post("/<int:account_id>/transactions/<int:transaction_id>/unsplit")
+    def unsplit_transaction(account_id: int, transaction_id: int):
+        load_account(account_id)
+        try:
+            operations.unsplit_transaction(dbp(), account_id, transaction_id)
+            flash("The split is undone; the original transaction counts again.", "ok")
+        except ValueError as e:
+            flash(str(e), "error")
+        return redirect(transactions_url(account_id, request.args.get("back")))
 
     # ---------------------------------------------------------------------------------
     # Import

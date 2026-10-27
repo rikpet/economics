@@ -7,6 +7,7 @@ import calendar
 
 import database as db
 import operations
+from app_types import SplitPart
 from cli.context import AppContext, category_tree, pass_app
 from printout import generate_table
 
@@ -233,6 +234,55 @@ def classify_transactions(app: AppContext):
         operations.classify_transaction(app.database_path, app.account_id, trans.id,
                                         main_category, sub_category, comment,
                                         remember_issuer=bool(store_issuer_classification))
+
+
+@click.command(name='split')
+@click.argument('transaction_id', type=int)
+@click.option('--part', 'parts', multiple=True, required=True,
+              help="AMOUNT[:MAIN/SUB[:COMMENT]], in the original's direction, e.g. 700:mat/butik. "
+                   "Repeat for every part; they must add up to the transaction's amount.")
+@pass_app
+def split_transaction(app: AppContext, transaction_id, parts):
+    """Split a transaction into parts with their own category."""
+    trans = db.get_transaction(app.database_path, app.account_id, transaction_id)
+    if trans is None:
+        raise click.ClickException(f'No transaction found with id {transaction_id}.')
+    sign = -1 if trans.amount < 0 else 1
+    tree = category_tree(app)
+    split_parts = []
+    for text in parts:
+        amount_text, _, rest = text.partition(':')
+        category, _, comment = rest.partition(':')
+        main, _, sub = category.partition('/')
+        main, sub = main.strip().lower() or None, sub.strip().lower() or None
+        if main and sub not in tree.get(main, []):
+            raise click.ClickException(f'Unknown category: {category}')
+        try:
+            amount = operations.parse_amount(amount_text)
+        except ValueError as e:
+            raise click.ClickException(str(e))
+        if amount is None:
+            raise click.ClickException(f'Missing amount in {text!r}')
+        split_parts.append(SplitPart(amount * sign, main, sub, comment.strip() or None))
+    try:
+        ids = operations.split_transaction(app.database_path, app.account_id, transaction_id,
+                                           split_parts)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    click.echo(f'Transaction {transaction_id} split into {len(ids)} parts: '
+               f'{", ".join(map(str, ids))}.')
+
+
+@click.command(name='unsplit')
+@click.argument('transaction_id', type=int)
+@pass_app
+def unsplit_transaction(app: AppContext, transaction_id):
+    """Undo a split, so the original transaction counts again."""
+    try:
+        operations.unsplit_transaction(app.database_path, app.account_id, transaction_id)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    click.echo(f'Split of transaction {transaction_id} undone.')
 
 
 @click.command(name='unclassified')

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.0
+
+- Split a transaction into several smaller ones, each with its own category and comment —
+  for example a supermarket receipt that is partly groceries and partly household things.
+  Open the transaction, choose **Split…**, and divide the amount; the page shows how much
+  is left to divide. The parts replace the original in the budget, the charts and the lists.
+- A split can be changed or undone later, from the original or from any of its parts.
+  Importing the same bank file again does not bring the original back.
+
 ## 2.3.1
 
 - The charts use the latest version of Plotly (4.1). They look and work as before.

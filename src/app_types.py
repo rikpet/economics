@@ -24,6 +24,15 @@ class ReadTransaction():
     comment: str | None = None
     verification_number: str | None = None
     modification_log: str | None = None
+    parent_id: int | None = None   # set on the parts of a split transaction
+    is_split: bool = False         # the original of a split; replaced by its parts
+
+@dataclass
+class SplitPart:
+    amount: float
+    main_category: str | None = None
+    sub_category: str | None = None
+    comment: str | None = None
 
 @dataclass
 class IssuerClassification:

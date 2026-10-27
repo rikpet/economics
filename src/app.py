@@ -19,7 +19,9 @@ from cli.transactions import (
     list_transactions,
     modify_transaction,
     classify_transactions,
-    unclassified_transactions
+    split_transaction,
+    unclassified_transactions,
+    unsplit_transaction
 )
 
 from cli.issuer import (
@@ -92,6 +94,8 @@ trans.add_command(list_transactions)
 trans.add_command(modify_transaction)
 trans.add_command(classify_transactions)
 trans.add_command(unclassified_transactions)
+trans.add_command(split_transaction)
+trans.add_command(unsplit_transaction)
 
 
 @cli.group()

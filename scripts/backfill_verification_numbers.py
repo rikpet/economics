@@ -41,7 +41,9 @@ def load_null_rows(db_path: str, account_id: int):
         c = conn.cursor()
         c.execute(
             'SELECT id, date, issuer, amount, origin FROM transactions '
-            'WHERE verification_number IS NULL AND account_id = ? ORDER BY id',
+            # Parts of split transactions have no verification number of their own.
+            'WHERE verification_number IS NULL AND parent_id IS NULL AND account_id = ? '
+            'ORDER BY id',
             (account_id,)
         )
         return c.fetchall()
