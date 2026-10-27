@@ -49,6 +49,8 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
     categories = db.get_categories(database_path, account.id)
     hidden = hidden_categories(categories)
 
+    budgets = db.get_budgets(database_path, account.id)
+
     states: dict[str, dict] = {}
     for main in current.categories():
         subs = visible_subs(current, main, hidden)
@@ -72,6 +74,13 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
                                    for sub in subs},
             },
         }
+        if main in budgets:
+            is_income = all(not c.invert_sign for c in categories if c.main_category == main)
+            budget = budgets[main]
+            attributes = states[f"{prefix}_{slugify(main)}"]["attributes"]
+            attributes.update({"budget": budget, "budget_left": round(budget - value, 2)})
+            if not is_income:  # income can't be judged before the month is over
+                attributes["over_budget"] = value > budget + 0.005
 
     # Expense totals, as the summary rows under the budget table.
     def totals(balances: dict) -> tuple[list[float], list[float]]:

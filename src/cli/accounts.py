@@ -1,6 +1,7 @@
 import click
 
 import database as db
+import operations
 from category_templates import TEMPLATES
 from cli.context import AppContext, pass_app
 from printout import generate_table
@@ -73,12 +74,43 @@ def remove_account(app: AppContext, account):
 @pass_app
 def list_categories(app: AppContext):
     """List the categories of the account."""
+    budgets = db.get_budgets(app.database_path, app.account_id)
     rows = [
-        (c.id, c.main_category, c.sub_category, 'expense' if c.invert_sign else 'income')
+        (c.id, c.main_category, c.sub_category, c.kind,
+         int(budgets[c.main_category]) if c.main_category in budgets else '')
         for c in db.get_categories(app.database_path, app.account_id)
     ]
     click.echo(f'Categories for {app.account.name}:\n')
-    click.echo(generate_table(header=["ID", "MAIN CATEGORY", "SUB CATEGORY", "TYPE"], rows=rows))
+    click.echo(generate_table(header=["ID", "MAIN CATEGORY", "SUB CATEGORY", "TYPE",
+                                      "BUDGET/MONTH"], rows=rows))
+
+
+@click.command(name='budget')
+@click.argument('main_category')
+@click.argument('amount', required=False)
+@click.option('--clear', is_flag=True, help="Remove the budget.")
+@pass_app
+def set_budget(app: AppContext, main_category, amount, clear):
+    """Set the monthly budget for MAIN_CATEGORY, or show it."""
+    main_category = main_category.lower()
+    if not any(c.main_category == main_category
+               for c in db.get_categories(app.database_path, app.account_id)):
+        raise click.ClickException(f'Unknown main category: {main_category}')
+    if clear:
+        db.set_budget(app.database_path, app.account_id, main_category, None)
+        click.echo(f'Budget for {main_category} removed.')
+        return
+    if amount is None:
+        current = db.get_budgets(app.database_path, app.account_id).get(main_category)
+        click.echo(f'Budget for {main_category}: '
+                   + (f'{current:.0f} a month' if current is not None else 'none'))
+        return
+    try:
+        value = operations.parse_amount(amount)
+        db.set_budget(app.database_path, app.account_id, main_category, value)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    click.echo(f'Budget for {main_category} set to {value:.0f} a month.')
 
 
 @click.command(name='add')

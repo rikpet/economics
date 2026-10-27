@@ -4,6 +4,7 @@ from cli.accounts import (
     add_account,
     add_category,
     list_accounts,
+    set_budget,
     list_categories,
     remove_account,
     remove_category,
@@ -82,6 +83,7 @@ def category():
 category.add_command(list_categories)
 category.add_command(add_category)
 category.add_command(remove_category)
+category.add_command(set_budget)
 
 
 @cli.group()

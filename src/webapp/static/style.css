@@ -262,5 +262,8 @@ form + h2, .unsplit + h2 { margin-top: 1.5rem; }
 /* ---- budget summary and checks ----------------------------------------------------------- */
 table.budget tfoot tr.summary > * { font-weight: 600; background: var(--surface); border-top: 2px solid var(--border); }
 table.budget tfoot tr.summary + tr.summary > * { border-top: 1px solid var(--border); }
+table.budget td.over, table.budget td.over a { color: var(--neg); font-weight: 600; }
+table.budget td.budget-col { color: var(--muted); border-right: 1px solid var(--border); }
+.budget-input { width: 7.5rem; text-align: right; }
 table.budget td.flag { background: var(--warn-bg) !important; box-shadow: inset 0 0 0 1px var(--warn-border); }
 .flag-list { margin: .3rem 0 0; padding-left: 1.2rem; }

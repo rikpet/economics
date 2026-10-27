@@ -38,6 +38,7 @@ econ -a Familj trans classify
 econ -a Familj balance --year 2026 --show-sub-category   # --all includes hidden categories
 econ -a Familj category list
 econ -a Familj category add boende el
+econ -a Familj category budget mat 6000           # monthly budget; --clear removes it
 econ -a Familj issuer list
 econ -a Familj trans split 42 --part 700:mat/butik --part 300:hushåll/övrigt:lampa
 econ -a Familj trans unsplit 42

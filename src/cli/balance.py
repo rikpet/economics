@@ -4,6 +4,7 @@ import click
 from dataclasses import replace
 
 from budget import (
+    budget_checks,
     budget_table,
     completed_months,
     hidden_categories,
@@ -12,7 +13,7 @@ from budget import (
     zero_check_flags,
 )
 from cli.context import AppContext, pass_app
-from database import get_categories, get_transactions
+from database import get_budgets, get_categories, get_transactions
 from printout import generate_table
 from utils import month_no_to_name, month_to_date
 
@@ -38,18 +39,31 @@ def balance(app: AppContext, show_sub_category, year, month, category: tuple[str
     except ValueError as e:
         raise click.ClickException(str(e))
 
-    table_data = [
-        [f'  - {r.label}' if r.is_sub else r.label] + [str(int(v)) for v in r.values]
-        for r in rows
-    ]
+    budgets = get_budgets(app.database_path, app.account_id)
+    checks = budget_checks(rows, budgets, categories, year, list(balances))
+
+    def cell(value: float, red: bool) -> str:
+        # Red when over budget; click drops the color when the output isn't a terminal.
+        return click.style(str(int(value)), fg='red', bold=True) if red else str(int(value))
+
+    table_data = []
+    for r in rows:
+        check = None if r.is_sub else checks.get(r.main_category)
+        line = [f'  - {r.label}' if r.is_sub else r.label]
+        if budgets:
+            line.append(str(int(check.budget)) if check else '')
+        line += [cell(v, bool(check) and m in check.red_months)
+                 for m, v in zip(balances, r.values)]
+        table_data.append(line)
     if not category:
-        table_data.append([''] * (len(balances) + 1))
-        table_data += [[s.label] + [str(int(v)) for v in s.values]
+        blank = [''] if budgets else []
+        table_data.append([''] * (len(balances) + 1 + len(blank)))
+        table_data += [[s.label] + blank + [str(int(v)) for v in s.values]
                        for s in summary_rows(balances, categories)]
 
     click.echo(f'BUDGET SUMMARY ({app.account.name}):\n')
     click.echo(generate_table(
-        header=['Category'] + [month_no_to_name(m) for m in balances],
+        header=['Category'] + (['Budget'] if budgets else []) + [month_no_to_name(m) for m in balances],
         rows=table_data
     ))
 

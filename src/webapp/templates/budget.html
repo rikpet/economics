@@ -32,19 +32,22 @@
 <div class="table-wrap">
 <table class="budget">
   <thead>
-    <tr><th>Category</th>{% for m in months %}<th class="num">{{ m }}</th>{% endfor %}<th class="num">Total</th></tr>
+    <tr><th>Category</th>{% if budgets %}<th class="num" title="Monthly budget">Budget</th>{% endif %}{% for m in months %}<th class="num">{{ m }}</th>{% endfor %}<th class="num">Total</th></tr>
   </thead>
   <tbody>
   {% for r in rows %}
+    {% set check = none if r.is_sub else checks.get(r.main_category) %}
     <tr class="{{ 'sub' if r.is_sub else 'main' }}">
       <th scope="row">{{ r.label }}</th>
+      {% if budgets %}<td class="num budget-col">{% if check %}{{ check.budget|money }}{% endif %}</td>{% endif %}
       {% for v in r.values %}
       {% set is_flagged = ((r.main_category, r.sub_category, loop.index) in flagged) if r.is_sub else ((r.main_category, loop.index) in flagged_main) %}
-      <td class="num{% if is_flagged %} flag{% endif %}"{% if is_flagged %} title="Should be 0 every month"{% endif %}>
+      {% set is_over = check and loop.index in check.red_months %}
+      <td class="num{% if is_flagged %} flag{% endif %}{% if is_over %} over{% endif %}"{% if is_flagged %} title="Should be 0 every month"{% elif is_over %} title="{{ check.describe(loop.index, v) }}"{% endif %}>
         {% if v %}<a href="{{ url_for('transactions', account_id=account.id, year=year, month=loop.index, category=r.main_category, sub=r.sub_category or '') }}">{{ v|money }}</a>{% else %}<span class="muted">–</span>{% endif %}
       </td>
       {% endfor %}
-      <td class="num total">{{ r.total|money }}</td>
+      <td class="num total{% if check and check.total_red %} over{% endif %}"{% if check and check.total_red %} title="Budget so far: {{ check.total_budget|money }} kr"{% endif %}>{{ r.total|money }}</td>
     </tr>
   {% endfor %}
   </tbody>
@@ -52,6 +55,7 @@
   {% for s in summary %}
     <tr class="summary">
       <th scope="row" title="{{ s.hint }}">{{ s.label }}</th>
+      {% if budgets %}<td></td>{% endif %}
       {% for v in s.values %}<td class="num">{% if v %}{{ v|money }}{% else %}<span class="muted">–</span>{% endif %}</td>{% endfor %}
       <td class="num total">{{ s.total|money }}</td>
     </tr>
@@ -61,6 +65,7 @@
 </div>
 <p class="hint">Expense categories are shown as positive costs. Click an amount to see its transactions.
 {% for s in summary %}<br><strong>{{ s.label }}</strong>: {{ s.hint }}{% endfor %}
+{% if budgets %}<br>Red: an expense group over its monthly budget, or an income group under it. Budgets are set under <a href="{{ url_for('categories', account_id=account.id) }}">Categories</a>.{% endif %}
 <br>Which categories are expenses, fixed costs or transfers, and which should be 0 every month, is set under <a href="{{ url_for('categories', account_id=account.id) }}">Categories</a>.
 {% if hidden_count %}{{ hidden_count }} hidden {{ 'category is' if hidden_count == 1 else 'categories are' }} not shown (<a href="{{ url_for('categories', account_id=account.id) }}">manage</a>).{% endif %}
 See also the <a href="{{ url_for('charts', account_id=account.id, year=year) }}">charts</a>.

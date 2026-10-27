@@ -220,3 +220,53 @@ def zero_check_flags(balances: dict[int, Balance], categories: list[Category],
             if month <= months_done and abs(value) >= 0.005:
                 flags.append(ZeroCheckFlag(main, sub, month, value))
     return flags
+
+
+@dataclass
+class BudgetCheck:
+    """How a main category with a monthly budget did: the months (and total) to show red."""
+    budget: float
+    is_income: bool
+    red_months: set[int]
+    total_red: bool
+    total_budget: float  # the budget for the months counted in the total
+
+    def describe(self, month: int, value: float) -> str:
+        diff = abs(value - self.budget)
+        if self.is_income:
+            return f"{diff:,.0f} kr under the budget of {self.budget:,.0f} kr".replace(",", " ")
+        return f"{diff:,.0f} kr over the budget of {self.budget:,.0f} kr".replace(",", " ")
+
+
+def budget_checks(rows: list[BudgetRow], budgets: dict[str, float], categories: list[Category],
+                  year: int, months: list[int], now: datetime | None = None
+                  ) -> dict[str, BudgetCheck]:
+    """Compare main categories with their monthly budget.
+
+    Expense groups are red in a month they go over the budget, the current month included.
+    Income groups (all sub-categories of type Income) are red in a finished month they stay
+    under it. The total is compared with the budget times the months counted so far.
+    Categories without a budget are not checked.
+    """
+    now = now or datetime.now()
+    through = 12 if year < now.year else (now.month if year == now.year else 0)
+    done = completed_months(year, now)
+    income_mains = {c.main_category for c in categories if not c.invert_sign} - {
+        c.main_category for c in categories if c.invert_sign}
+
+    checks: dict[str, BudgetCheck] = {}
+    for r in rows:
+        if r.is_sub or r.main_category not in budgets:
+            continue
+        budget = budgets[r.main_category]
+        is_income = r.main_category in income_mains
+        counted = [(m, v) for m, v in zip(months, r.values) if m <= (done if is_income else through)]
+        if is_income:
+            red = {m for m, v in counted if v < budget - 0.005}
+            total_red = bool(counted) and sum(v for _, v in counted) < budget * len(counted) - 0.005
+        else:
+            red = {m for m, v in counted if v > budget + 0.005}
+            total_red = sum(v for _, v in counted) > budget * len(counted) + 0.005
+        checks[r.main_category] = BudgetCheck(budget, is_income, red, total_red,
+                                              budget * len(counted))
+    return checks

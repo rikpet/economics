@@ -61,6 +61,12 @@ per category under **Categories** with *Type*:
 (from the start Bokföring › Utlägg/skuld) are flagged on the budget page for every finished
 month where they don't add up to 0.
 
+**Budgets** are optional: give a main category a monthly budget under **Categories**
+(*Budget/month*). The budget page then shows it in a *Budget* column and colours the
+amounts red when an expense group is over budget, or an income group under it in a finished
+month. The total is compared with the budget for the months so far. Groups without a budget
+stay black.
+
 Under **Categories** you can hide categories you don't want in the budget, such as
 Bokföring or internal transfers: a whole group with *Hide from budget*, or a single
 sub-category by unticking *Show*. Hidden categories keep their transactions but are left

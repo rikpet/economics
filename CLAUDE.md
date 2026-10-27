@@ -126,6 +126,12 @@ included. Defaults for new categories come from names in `category_templates`
 (`TRANSFER_MAINS`, `TRANSFER_SUBS`, `FIXED_MAINS`, `ZERO_CHECK_SUB_PART`) via
 `_apply_category_defaults()`; migration 5 has its own frozen copy of those rules.
 
+**Budgets** (migration 6, table `budgets`): an optional monthly amount per main category
+and account; `rename_main_category()` moves it along. `budget.budget_checks()` decides what
+is red: expense groups over budget in any month up to now, income groups (every sub of type
+Income) under budget in finished months only; totals against budget × months counted.
+Without a budget nothing is coloured — amounts stay in the normal text colour.
+
 **Hidden categories** (`categories.hidden`) are left out of the budget table, the charts and
 the sensors, including their share of the main category's total. They still exist for
 classification. `econ balance --all` shows them.

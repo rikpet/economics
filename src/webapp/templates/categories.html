@@ -23,6 +23,14 @@
 <div class="card{% if all_hidden %} is-hidden{% endif %}">
   <div class="cat-group-head">
     <h2>{{ m|capitalize }}{% if all_hidden %} <span class="muted">· hidden</span>{% endif %}</h2>
+    <form method="post" action="{{ url_for('update_category_group', account_id=account.id) }}" class="row-form compact budget-form">
+      <input type="hidden" name="main" value="{{ m }}">
+      <input type="hidden" name="action" value="budget">
+      <label>Budget/month
+        <input type="text" name="budget" value="{{ budgets[m]|round|int if m in budgets else '' }}" inputmode="decimal" placeholder="None" class="budget-input" aria-label="Monthly budget for {{ m }} (kr)" title="Monthly budget in kr. Leave empty for no budget.">
+      </label>
+      <button type="submit" class="secondary">Save</button>
+    </form>
     <form method="post" action="{{ url_for('update_category_group', account_id=account.id) }}" class="row-form compact">
       <input type="hidden" name="main" value="{{ m }}">
       <input type="text" name="name" value="{{ m }}" required aria-label="Rename {{ m }}">

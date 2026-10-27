@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.6.0
+
+- Optional monthly budgets per main category. Set one under **Categories** (*Budget/month*
+  in the group's header); leave it empty for no budget.
+- The budget page shows the budget next to each group, and the amounts turn red when an
+  expense group goes over it (an income group: when it stays under it in a finished month).
+  The total turns red when the year so far is over budget. Without budgets everything stays
+  black, as before.
+- Home Assistant: category sensors with a budget get `budget`, `budget_left` and, for
+  expenses, `over_budget` attributes.
+
 ## 2.5.0
 
 - The budget ends with two totals: **Expenses** (every expense, but not income or savings)

@@ -225,9 +225,18 @@ def _migration_5_expense_roles(c: sqlite3.Cursor):
     c.execute("UPDATE categories SET zero_check = 1 WHERE sub_category LIKE '%skuld%'")
 
 
+def _migration_6_budgets(c: sqlite3.Cursor):
+    """An optional monthly budget per main category."""
+    c.execute('CREATE TABLE budgets ('
+              'account_id INTEGER NOT NULL REFERENCES accounts(id), '
+              'main_category TEXT NOT NULL, '
+              'amount REAL NOT NULL, '
+              'PRIMARY KEY(account_id, main_category))')
+
+
 # Append-only: users have live databases at every version.
 MIGRATIONS = [_migration_1_initial, _migration_2_accounts, _migration_3_hidden_categories,
-              _migration_4_split_transactions, _migration_5_expense_roles]
+              _migration_4_split_transactions, _migration_5_expense_roles, _migration_6_budgets]
 
 
 def _apply_category_defaults(conn: sqlite3.Connection, account_id: int,
@@ -386,7 +395,8 @@ def delete_account(database_path: str, account_id: int):
             raise ValueError(f'The account has {count} transactions and cannot be deleted.')
         if conn.execute('SELECT COUNT(*) FROM accounts').fetchone()[0] <= 1:
             raise ValueError('The last account cannot be deleted.')
-        for table in ('categories', 'issuer_classifications', 'allowances', 'settings'):
+        for table in ('categories', 'issuer_classifications', 'allowances', 'settings',
+                      'budgets'):
             conn.execute(f'DELETE FROM {table} WHERE account_id = ?', (account_id,))
         conn.execute('DELETE FROM accounts WHERE id = ?', (account_id,))
 
@@ -512,6 +522,30 @@ def set_group_kind(database_path: str, account_id: int, main_category: str,
                       main_category.strip().lower()))
 
 
+def get_budgets(database_path: str, account_id: int) -> dict[str, float]:
+    """Monthly budget per main category; categories without a budget are absent."""
+    with _connect(database_path) as conn:
+        rows = conn.execute('SELECT main_category, amount FROM budgets WHERE account_id = ?',
+                            (account_id,)).fetchall()
+        return {r['main_category']: r['amount'] for r in rows}
+
+
+def set_budget(database_path: str, account_id: int, main_category: str, amount: float | None):
+    """Set the monthly budget for a main category; None removes it."""
+    main_category = main_category.strip().lower()
+    if amount is not None and amount < 0:
+        raise ValueError('A budget cannot be negative.')
+    with _connect(database_path) as conn:
+        if amount is None:
+            conn.execute('DELETE FROM budgets WHERE account_id = ? AND main_category = ?',
+                         (account_id, main_category))
+        else:
+            conn.execute('INSERT INTO budgets (account_id, main_category, amount) '
+                         'VALUES (?, ?, ?) ON CONFLICT(account_id, main_category) '
+                         'DO UPDATE SET amount = excluded.amount',
+                         (account_id, main_category, round(amount, 2)))
+
+
 def rename_main_category(database_path: str, account_id: int, old: str, new: str):
     """Rename a main category with all its sub-categories, transactions and issuer rules."""
     old = old.strip().lower()
@@ -529,6 +563,11 @@ def rename_main_category(database_path: str, account_id: int, old: str, new: str
             raise ValueError(f'{new}/{clash[0]} already exists.')
         conn.execute('UPDATE categories SET main_category = ? '
                      'WHERE account_id = ? AND main_category = ?', (new, account_id, old))
+        # The budget follows the group, unless the new name already has one.
+        if conn.execute('SELECT 1 FROM budgets WHERE account_id = ? AND main_category = ?',
+                        (account_id, new)).fetchone() is None:
+            conn.execute('UPDATE budgets SET main_category = ? '
+                         'WHERE account_id = ? AND main_category = ?', (new, account_id, old))
         for table in ('transactions', 'issuer_classifications'):
             conn.execute(f'UPDATE {table} SET main_category = ? '
                          'WHERE account_id = ? AND py_lower(main_category) = ?',

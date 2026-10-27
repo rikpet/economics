@@ -27,6 +27,7 @@ import operations
 from version import __version__
 from app_types import Account, Category, IssuerClassification, SplitPart
 from budget import (
+    budget_checks,
     budget_table,
     cash_flow,
     completed_months,
@@ -222,6 +223,8 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         rows = budget_table(balances, show_sub_category=show_subs, hidden=hidden)
         years = year_options(account_id)
         flags = zero_check_flags(balances, categories, completed_months(year))
+        budgets = db.get_budgets(dbp(), account_id)
+        checks = budget_checks(rows, budgets, categories, year, list(balances))
 
         @after_this_request
         def remember(response):
@@ -232,6 +235,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         return render_template(
             "budget.html", rows=rows, year=year, years=years, show_subs=show_subs,
             hidden_count=len(hidden), summary=summary_rows(balances, categories), flags=flags,
+            budgets=budgets, checks=checks,
             flagged={(f.main_category, f.sub_category, f.month) for f in flags},
             flagged_main={(f.main_category, f.month) for f in flags},
             unclassified=db.count_unclassified_transactions(dbp(), account_id),
@@ -639,7 +643,8 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         groups = category_choices(account_id)
         usage = {c.id: db.category_usage(dbp(), account_id, c.main_category, c.sub_category)
                  for _, cats in groups for c in cats}
-        return render_template("categories.html", groups=groups, usage=usage)
+        return render_template("categories.html", groups=groups, usage=usage,
+                               budgets=db.get_budgets(dbp(), account_id))
 
     @app.post("/<int:account_id>/categories")
     def add_category(account_id: int):
@@ -685,6 +690,12 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
                 db.set_category_hidden(dbp(), account_id, action == "hide", main_category=main)
                 flash(f"{main.capitalize()} is {'hidden from' if action == 'hide' else 'shown in'} "
                       "the budget.", "ok")
+            elif action == "budget":
+                amount = operations.parse_amount(request.form.get("budget", ""))
+                db.set_budget(dbp(), account_id, main, amount)
+                flash(f"Budget for {main.capitalize()} "
+                      + (f"set to {format_money(amount)} kr a month." if amount is not None
+                         else "removed."), "ok")
             elif action == "kind":
                 invert, role = kind_arg()
                 db.set_group_kind(dbp(), account_id, main, invert, role)
