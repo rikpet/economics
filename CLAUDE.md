@@ -186,8 +186,8 @@ to keep idle memory low.
 - **Phones (≤ 640px)** get their own layout from CSS media queries at the end of
   `style.css`: the header stops being sticky and the nav scrolls sideways; tables become
   cards (`table.tx`, `table.rules`, cell classes `c-*` / `r-*`); the budget table hides all
-  month columns but one (`.m .mN` cells, `data-month` on the table, `?m=` in the URL, steps
-  with ‹ ›). Sections marked `details[data-mobile-closed]` are folded on phones by the
+  month columns but two (`.m .mN` cells; `data-month` = the later month 2..12 and
+  `data-month2` = the one before on the table; `?m=` in the URL; ‹ › step one month). Sections marked `details[data-mobile-closed]` are folded on phones by the
   script in `base.html`. Check new pages at 360 and 390px: no element wider than the
   screen, tap targets about 40px.
 - **The legacy `C:\Users\...` default path** becomes a literal file name in the working

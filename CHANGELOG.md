@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.8.1
+
+- On a phone the budget shows two months side by side (the chosen month and the one
+  before it) next to the year's total, so you can compare with last month. ‹ › move one
+  month at a time.
+
 ## 2.8.0
 
 - Debt-check warnings (e.g. Utlägg/skuld not 0 in a month) can be acknowledged with

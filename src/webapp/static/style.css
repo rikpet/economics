@@ -312,7 +312,8 @@ table.budget tbody tr.sub th, table.budget tfoot th { background: var(--surface)
 .month-switch { display: none; }
 
 @media (max-width: 640px) {
-  /* One month at a time, next to the budget and the year's total. */
+  /* Two months at a time (the chosen one and the one before), next to the budget and the
+     year's total. */
   .month-switch { display: flex; gap: .4rem; margin-bottom: .6rem; }
   .month-switch select { flex: 1; }
   .month-switch .button { justify-content: center; min-width: 2.8rem; font-size: 1.3rem; padding: 0; }
@@ -322,7 +323,13 @@ table.budget tbody tr.sub th, table.budget tfoot th { background: var(--surface)
   table.budget[data-month="5"] .m5, table.budget[data-month="6"] .m6,
   table.budget[data-month="7"] .m7, table.budget[data-month="8"] .m8,
   table.budget[data-month="9"] .m9, table.budget[data-month="10"] .m10,
-  table.budget[data-month="11"] .m11, table.budget[data-month="12"] .m12 { display: table-cell; }
+  table.budget[data-month="11"] .m11, table.budget[data-month="12"] .m12,
+  table.budget[data-month2="1"] .m1, table.budget[data-month2="2"] .m2,
+  table.budget[data-month2="3"] .m3, table.budget[data-month2="4"] .m4,
+  table.budget[data-month2="5"] .m5, table.budget[data-month2="6"] .m6,
+  table.budget[data-month2="7"] .m7, table.budget[data-month2="8"] .m8,
+  table.budget[data-month2="9"] .m9, table.budget[data-month2="10"] .m10,
+  table.budget[data-month2="11"] .m11 { display: table-cell; }
   table.budget th, table.budget td { padding: .55rem .5rem; }
   table.budget tbody th { white-space: normal; }
   table.budget tr.sub th { padding-left: 1.1rem; }
@@ -406,4 +413,10 @@ button.small { min-height: 0; padding: .2rem .6rem; font-size: .85rem; }
 .acked .flag-list { margin: .4rem 0 0; }
 @media (max-width: 640px) {
   button.small { min-height: 2.4rem; padding: .3rem .8rem; }
+}
+@media (max-width: 380px) {
+  /* Two months, budget and total have to fit on the narrowest phones too. */
+  table.budget { font-size: .85rem; }
+  table.budget th, table.budget td { padding: .5rem .3rem; }
+  table.budget tr.sub th { padding-left: .7rem; }
 }

@@ -234,6 +234,8 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         if not month_shown or not 1 <= month_shown <= 12:
             used = [m for m in range(1, 13) if any(r.values[m - 1] for r in rows)]
             month_shown = now.month if year == now.year else (used[-1] if used else 1)
+        # Phones show this month and the one before it; January pairs with February.
+        month_shown = max(month_shown, 2)
         checks = budget_checks(rows, budgets, categories, year, list(balances))
 
         @after_this_request

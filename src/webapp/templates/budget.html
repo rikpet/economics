@@ -56,16 +56,17 @@
 </details>
 {% endif %}
 
-{# On phones one month is shown at a time; these step between them. #}
+{# On phones two months are shown at a time (month_shown and the one before); these step
+   the pair one month at a time. #}
 <div class="month-switch" id="month-switch">
-  <a class="button secondary" data-step="-1" href="{{ url_for('budget', account_id=account.id, year=year, subs=show_subs|int, m=(month_shown - 1) if month_shown > 1 else 12) }}" aria-label="Previous month">‹</a>
-  <label class="visually-hidden" for="month-pick">Month</label>
-  <select id="month-pick">{% for m in months %}<option value="{{ loop.index }}" {% if loop.index == month_shown %}selected{% endif %}>{{ m }} {{ year }}</option>{% endfor %}</select>
-  <a class="button secondary" data-step="1" href="{{ url_for('budget', account_id=account.id, year=year, subs=show_subs|int, m=(month_shown + 1) if month_shown < 12 else 1) }}" aria-label="Next month">›</a>
+  <a class="button secondary" data-step="-1" href="{{ url_for('budget', account_id=account.id, year=year, subs=show_subs|int, m=(month_shown - 1) if month_shown > 2 else 12) }}" aria-label="One month earlier">‹</a>
+  <label class="visually-hidden" for="month-pick">Months</label>
+  <select id="month-pick">{% for m in months[1:] %}<option value="{{ loop.index + 1 }}" {% if loop.index + 1 == month_shown %}selected{% endif %}>{{ months[loop.index - 1] }}–{{ m }} {{ year }}</option>{% endfor %}</select>
+  <a class="button secondary" data-step="1" href="{{ url_for('budget', account_id=account.id, year=year, subs=show_subs|int, m=(month_shown + 1) if month_shown < 12 else 2) }}" aria-label="One month later">›</a>
 </div>
 
 <div class="table-wrap">
-<table class="budget" id="budget-table" data-month="{{ month_shown }}">
+<table class="budget" id="budget-table" data-month="{{ month_shown }}" data-month2="{{ month_shown - 1 }}">
   <thead>
     <tr><th>Category</th>{% if budgets %}<th class="num" title="Monthly budget">Budget</th>{% endif %}{% for m in months %}<th class="num m m{{ loop.index }}">{{ m }}</th>{% endfor %}<th class="num">Total</th></tr>
   </thead>
@@ -112,8 +113,10 @@ See also the <a href="{{ url_for('charts', account_id=account.id, year=year) }}"
   const table = document.getElementById("budget-table");
   const pick = document.getElementById("month-pick");
   function show(month) {
-    month = ((month - 1 + 12) % 12) + 1;
+    // The later of the two months shown, 2..12, wrapping around the year.
+    month = ((month - 2 + 11) % 11) + 2;
     table.dataset.month = month;
+    table.dataset.month2 = month - 1;
     pick.value = month;
     const url = new URL(location.href);
     url.searchParams.set("m", month);

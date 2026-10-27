@@ -371,7 +371,10 @@ def test_budget_month_shown_on_phones(client, path):
     shown = lambda url: re.search(r'id="budget-table" data-month="(\d+)"',
                                   client.get(url).get_data(as_text=True)).group(1)
     assert shown('/1/?year=2024') == '9'          # another year: the last month with data
-    assert shown('/1/?year=2024&m=2') == '2'      # the chosen month
+    assert shown('/1/?year=2024&m=5') == '5'      # the chosen month
     assert shown('/1/?year=2024&m=13') == '9'
-    html = client.get('/1/?year=2024&m=1').get_data(as_text=True)
-    assert 'm=12' in html and 'm=2' in html       # previous/next wrap around the year
+    assert shown('/1/?year=2024&m=1') == '2'      # January is shown with February
+    html = client.get('/1/?year=2024&m=5').get_data(as_text=True)
+    assert 'data-month="5" data-month2="4"' in html and 'Apr–May 2024' in html
+    html = client.get('/1/?year=2024&m=2').get_data(as_text=True)
+    assert 'm=12' in html and 'm=3' in html       # the steps wrap around the year
