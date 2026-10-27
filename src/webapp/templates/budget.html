@@ -17,16 +17,43 @@
   <a href="{{ url_for('classify', account_id=account.id) }}">Classify them</a></div>
 {% endif %}
 
+{% macro check_form(f, action, label, cls) -%}
+<form method="post" action="{{ url_for('zero_check', account_id=account.id) }}" class="inline-form">
+  <input type="hidden" name="main" value="{{ f.main_category }}">
+  <input type="hidden" name="sub" value="{{ f.sub_category }}">
+  <input type="hidden" name="year" value="{{ year }}">
+  <input type="hidden" name="month" value="{{ f.month }}">
+  <input type="hidden" name="amount" value="{{ '%.2f'|format(f.value) }}">
+  <input type="hidden" name="subs" value="{{ show_subs|int }}">
+  <input type="hidden" name="m" value="{{ month_shown }}">
+  <button type="submit" name="action" value="{{ action }}" class="{{ cls }}">{{ label }}</button>
+</form>
+{%- endmacro %}
 {% if flags %}
 <div class="flash warn" role="alert">
   <strong>Should be 0 every month:</strong>
   <ul class="flag-list">
-  {% for label, items in flags|groupby('label') %}
-    <li>{{ label }} is
-      {% for f in items %}<a href="{{ url_for('transactions', account_id=account.id, year=year, month=f.month, category=f.main_category, sub=f.sub_category) }}">{{ f.value|money }} kr in {{ months[f.month - 1] }}</a>{{ ', ' if not loop.last }}{% endfor %}.</li>
+  {% for f in flags %}
+    <li>
+      <span>{{ f.label }} is <a href="{{ url_for('transactions', account_id=account.id, year=year, month=f.month, category=f.main_category, sub=f.sub_category) }}">{{ f.value|money }} kr in {{ months[f.month - 1] }}</a></span>
+      {{ check_form(f, 'ack', 'Acknowledge', 'secondary small') }}
+    </li>
   {% endfor %}
   </ul>
 </div>
+{% endif %}
+{% if acknowledged %}
+<details class="acked fold">
+  <summary>{{ acknowledged|length }} acknowledged {{ 'warning' if acknowledged|length == 1 else 'warnings' }}</summary>
+  <ul class="flag-list">
+  {% for f in acknowledged %}
+    <li>
+      <span>{{ f.label }}: {{ f.value|money }} kr in {{ months[f.month - 1] }} <span class="muted">· acknowledged {{ f.acknowledged_at }}</span></span>
+      {{ check_form(f, 'undo', 'Undo', 'secondary small') }}
+    </li>
+  {% endfor %}
+  </ul>
+</details>
 {% endif %}
 
 {# On phones one month is shown at a time; these step between them. #}

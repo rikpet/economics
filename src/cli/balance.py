@@ -9,11 +9,12 @@ from budget import (
     completed_months,
     hidden_categories,
     monthly_balances,
+    split_acknowledged,
     summary_rows,
     zero_check_flags,
 )
 from cli.context import AppContext, pass_app
-from database import get_budgets, get_categories, get_transactions
+from database import get_budgets, get_categories, get_transactions, get_zero_check_acks
 from printout import generate_table
 from utils import month_no_to_name, month_to_date
 
@@ -67,9 +68,14 @@ def balance(app: AppContext, show_sub_category, year, month, category: tuple[str
         rows=table_data
     ))
 
-    for flag in zero_check_flags(balances, categories, completed_months(year)):
+    flags, acknowledged = split_acknowledged(
+        zero_check_flags(balances, categories, completed_months(year)),
+        get_zero_check_acks(app.database_path, app.account_id, year))
+    for flag in flags:
         click.echo(f'WARNING: {flag.main_category}/{flag.sub_category} is {int(flag.value)}, '
                    f'not 0, in {month_no_to_name(flag.month)}')
+    if acknowledged:
+        click.echo(f'({len(acknowledged)} acknowledged; see econ check list)')
 
 
 @click.command()

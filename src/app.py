@@ -41,6 +41,7 @@ from cli.advanced import (
     query_db,
     run_db_schema
 )
+from cli.checks import acknowledge, list_checks, unacknowledge
 from cli.web import web
 from database import create_tables
 
@@ -84,6 +85,16 @@ category.add_command(list_categories)
 category.add_command(add_category)
 category.add_command(remove_category)
 category.add_command(set_budget)
+
+
+@cli.group()
+def check():
+    """Debt-check warnings: categories that should be 0 every month."""
+    pass
+
+check.add_command(list_checks)
+check.add_command(acknowledge)
+check.add_command(unacknowledge)
 
 
 @cli.group()

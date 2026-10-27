@@ -33,6 +33,7 @@ from budget import (
     completed_months,
     hidden_categories,
     monthly_balances,
+    split_acknowledged,
     summary_rows,
     zero_check_flags,
 )
@@ -222,7 +223,9 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         balances = monthly_balances(dbp(), account, year)
         rows = budget_table(balances, show_sub_category=show_subs, hidden=hidden)
         years = year_options(account_id)
-        flags = zero_check_flags(balances, categories, completed_months(year))
+        flags, acknowledged = split_acknowledged(
+            zero_check_flags(balances, categories, completed_months(year)),
+            db.get_zero_check_acks(dbp(), account_id, year))
         budgets = db.get_budgets(dbp(), account_id)
         # The month a phone shows first: the chosen one, else this month, or for another
         # year the last month with transactions.
@@ -242,11 +245,33 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         return render_template(
             "budget.html", rows=rows, year=year, years=years, show_subs=show_subs,
             hidden_count=len(hidden), summary=summary_rows(balances, categories), flags=flags,
-            budgets=budgets, checks=checks, month_shown=month_shown,
+            budgets=budgets, checks=checks, month_shown=month_shown, acknowledged=acknowledged,
             flagged={(f.main_category, f.sub_category, f.month) for f in flags},
             flagged_main={(f.main_category, f.month) for f in flags},
             unclassified=db.count_unclassified_transactions(dbp(), account_id),
         )
+
+    @app.post("/<int:account_id>/checks")
+    def zero_check(account_id: int):
+        """Acknowledge a debt-check warning (or undo that), then go back to the budget."""
+        load_account(account_id)
+        form = request.form
+        year, month = form.get("year", type=int), form.get("month", type=int)
+        main, sub = form.get("main", ""), form.get("sub", "")
+        if not (year and month and main and sub):
+            abort(400)
+        if form.get("action") == "undo":
+            db.unacknowledge_zero_check(dbp(), account_id, main, sub, year, month)
+            flash(f"{main.capitalize()} › {sub.capitalize()} in {MONTHS[month - 1]} is a "
+                  "warning again.", "ok")
+        else:
+            amount = operations.parse_amount(form.get("amount", "")) or 0
+            db.acknowledge_zero_check(dbp(), account_id, main, sub, year, month, amount)
+            flash(f"Acknowledged: {main.capitalize()} › {sub.capitalize()} is "
+                  f"{format_money(amount)} kr in {MONTHS[month - 1]}. If the amount changes, "
+                  "the warning comes back.", "ok")
+        return redirect(url_for("budget", account_id=account_id, year=year,
+                                subs=form.get("subs", "0"), m=form.get("m", "")))
 
     # ---------------------------------------------------------------------------------
     # Charts

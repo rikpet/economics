@@ -234,9 +234,23 @@ def _migration_6_budgets(c: sqlite3.Cursor):
               'PRIMARY KEY(account_id, main_category))')
 
 
+def _migration_7_zero_check_acks(c: sqlite3.Cursor):
+    """Debt-check warnings can be acknowledged, for the amount they had at the time."""
+    c.execute('CREATE TABLE zero_check_acks ('
+              'account_id INTEGER NOT NULL REFERENCES accounts(id), '
+              'main_category TEXT NOT NULL, '
+              'sub_category TEXT NOT NULL, '
+              'year INTEGER NOT NULL, '
+              'month INTEGER NOT NULL, '
+              'amount REAL NOT NULL, '
+              'acknowledged_at TEXT NOT NULL, '
+              'PRIMARY KEY(account_id, main_category, sub_category, year, month))')
+
+
 # Append-only: users have live databases at every version.
 MIGRATIONS = [_migration_1_initial, _migration_2_accounts, _migration_3_hidden_categories,
-              _migration_4_split_transactions, _migration_5_expense_roles, _migration_6_budgets]
+              _migration_4_split_transactions, _migration_5_expense_roles, _migration_6_budgets,
+              _migration_7_zero_check_acks]
 
 
 def _apply_category_defaults(conn: sqlite3.Connection, account_id: int,
@@ -396,7 +410,7 @@ def delete_account(database_path: str, account_id: int):
         if conn.execute('SELECT COUNT(*) FROM accounts').fetchone()[0] <= 1:
             raise ValueError('The last account cannot be deleted.')
         for table in ('categories', 'issuer_classifications', 'allowances', 'settings',
-                      'budgets'):
+                      'budgets', 'zero_check_acks'):
             conn.execute(f'DELETE FROM {table} WHERE account_id = ?', (account_id,))
         conn.execute('DELETE FROM accounts WHERE id = ?', (account_id,))
 
@@ -497,6 +511,10 @@ def update_category(database_path: str, account_id: int, category_id: int, main_
                          'AND py_lower(sub_category) = ?',
                          (main_category, sub_category, account_id,
                           old['main_category'], old['sub_category']))
+        conn.execute('UPDATE OR REPLACE zero_check_acks SET main_category = ?, sub_category = ? '
+                     'WHERE account_id = ? AND main_category = ? AND sub_category = ?',
+                     (main_category, sub_category, account_id,
+                      old['main_category'], old['sub_category']))
 
 
 def set_category_hidden(database_path: str, account_id: int, hidden: bool,
@@ -546,6 +564,39 @@ def set_budget(database_path: str, account_id: int, main_category: str, amount: 
                          (account_id, main_category, round(amount, 2)))
 
 
+def get_zero_check_acks(database_path: str, account_id: int,
+                        year: int) -> dict[tuple[str, str, int], dict]:
+    """Acknowledged debt-check warnings of a year: {(main, sub, month): {amount, at}}."""
+    with _connect(database_path) as conn:
+        rows = conn.execute('SELECT * FROM zero_check_acks WHERE account_id = ? AND year = ?',
+                            (account_id, year)).fetchall()
+        return {(r['main_category'], r['sub_category'], r['month']):
+                {'amount': r['amount'], 'at': r['acknowledged_at']} for r in rows}
+
+
+def acknowledge_zero_check(database_path: str, account_id: int, main_category: str,
+                           sub_category: str, year: int, month: int, amount: float):
+    """Acknowledge that a category is not 0 in a month, for this amount."""
+    if not 1 <= month <= 12:
+        raise ValueError('Month must be between 1 and 12.')
+    with _connect(database_path) as conn:
+        conn.execute('INSERT INTO zero_check_acks (account_id, main_category, sub_category, '
+                     'year, month, amount, acknowledged_at) VALUES (?, ?, ?, ?, ?, ?, ?) '
+                     'ON CONFLICT(account_id, main_category, sub_category, year, month) '
+                     'DO UPDATE SET amount = excluded.amount, '
+                     'acknowledged_at = excluded.acknowledged_at',
+                     (account_id, main_category.lower(), sub_category.lower(), year, month,
+                      round(amount, 2), datetime.now().strftime('%Y-%m-%d %H:%M')))
+
+
+def unacknowledge_zero_check(database_path: str, account_id: int, main_category: str,
+                             sub_category: str, year: int, month: int):
+    with _connect(database_path) as conn:
+        conn.execute('DELETE FROM zero_check_acks WHERE account_id = ? AND main_category = ? '
+                     'AND sub_category = ? AND year = ? AND month = ?',
+                     (account_id, main_category.lower(), sub_category.lower(), year, month))
+
+
 def rename_main_category(database_path: str, account_id: int, old: str, new: str):
     """Rename a main category with all its sub-categories, transactions and issuer rules."""
     old = old.strip().lower()
@@ -572,6 +623,8 @@ def rename_main_category(database_path: str, account_id: int, old: str, new: str
             conn.execute(f'UPDATE {table} SET main_category = ? '
                          'WHERE account_id = ? AND py_lower(main_category) = ?',
                          (new, account_id, old))
+        conn.execute('UPDATE OR REPLACE zero_check_acks SET main_category = ? '
+                     'WHERE account_id = ? AND main_category = ?', (new, account_id, old))
 
 
 def category_usage(database_path: str, account_id: int, main_category: str,

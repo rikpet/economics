@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.8.0
+
+- Debt-check warnings (e.g. Utlägg/skuld not 0 in a month) can be acknowledged with
+  **Acknowledge** on the budget page. An acknowledged warning disappears, also from the
+  Home Assistant sensor, and is listed under "acknowledged warnings" with an **Undo**.
+- The acknowledgement is for the amount at that time: if the month's amount changes later,
+  the warning comes back.
+
 ## 2.7.0
 
 Works much better on a phone (for example in the Home Assistant app):

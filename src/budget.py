@@ -198,6 +198,7 @@ class ZeroCheckFlag:
     sub_category: str
     month: int
     value: float
+    acknowledged_at: str | None = None  # set when acknowledged for exactly this amount
 
     @property
     def label(self) -> str:
@@ -220,6 +221,21 @@ def zero_check_flags(balances: dict[int, Balance], categories: list[Category],
             if month <= months_done and abs(value) >= 0.005:
                 flags.append(ZeroCheckFlag(main, sub, month, value))
     return flags
+
+
+def split_acknowledged(flags: list[ZeroCheckFlag], acks: dict[tuple[str, str, int], dict]
+                       ) -> tuple[list[ZeroCheckFlag], list[ZeroCheckFlag]]:
+    """(open, acknowledged) flags. An acknowledgement only counts while the amount is the
+    one that was acknowledged; if it changes, the warning is back."""
+    open_flags, acked = [], []
+    for f in flags:
+        ack = acks.get((f.main_category, f.sub_category, f.month))
+        if ack and abs(ack['amount'] - round(f.value, 2)) < 0.005:
+            f.acknowledged_at = ack['at']
+            acked.append(f)
+        else:
+            open_flags.append(f)
+    return open_flags, acked
 
 
 @dataclass

@@ -39,6 +39,8 @@ econ -a Familj balance --year 2026 --show-sub-category   # --all includes hidden
 econ -a Familj category list
 econ -a Familj category add boende el
 econ -a Familj category budget mat 6000           # monthly budget; --clear removes it
+econ check list --year 2026                       # categories that should be 0 every month
+econ check ack bokföring/utlägg/skuld 2026-03     # acknowledge a warning (undo: econ check undo ...)
 econ -a Familj issuer list
 econ -a Familj trans split 42 --part 700:mat/butik --part 300:hushåll/övrigt:lampa
 econ -a Familj trans unsplit 42

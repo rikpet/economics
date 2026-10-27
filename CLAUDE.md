@@ -122,7 +122,10 @@ shows it with `invert_sign` as one *Type* (`Category.kind`, `category_templates.
 hidden, `counts_as_expense`, plus unclassified), and `cash_flow()` for the charts uses the
 same rule. `categories.zero_check` marks categories that must add up to 0 each month;
 `zero_check_flags()` checks only finished months (`completed_months()`), hidden ones
-included. Defaults for new categories come from names in `category_templates`
+included. Warnings can be acknowledged (migration 7, table `zero_check_acks`, keyed by
+account/main/sub/year/month with the amount at the time); `split_acknowledged()` treats an
+acknowledgement as valid only while the amount is unchanged, and renames carry the rows
+along (`UPDATE OR REPLACE`). Defaults for new categories come from names in `category_templates`
 (`TRANSFER_MAINS`, `TRANSFER_SUBS`, `FIXED_MAINS`, `ZERO_CHECK_SUB_PART`) via
 `_apply_category_defaults()`; migration 5 has its own frozen copy of those rules.
 

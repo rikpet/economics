@@ -19,6 +19,7 @@ from budget import (
     hidden_categories,
     main_value,
     monthly_balances,
+    split_acknowledged,
     summary_rows,
     visible_subs,
     zero_check_flags,
@@ -107,7 +108,9 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
     }
 
     # Categories that should be 0 every month, checked for the finished months of the year.
-    flags = zero_check_flags(this_year, categories, completed_months(now.year, now))
+    flags, acknowledged = split_acknowledged(
+        zero_check_flags(this_year, categories, completed_months(now.year, now)),
+        db.get_zero_check_acks(database_path, account.id, now.year))
     states[f"{prefix}_debt_check"] = {
         "state": len({f.month for f in flags}),
         "attributes": {
@@ -118,6 +121,7 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
             "not_zero": [{"category": f"{f.main_category}/{f.sub_category}",
                           "month": f"{now.year}-{f.month:02d}", "amount": round(f.value, 2)}
                          for f in flags],
+            "acknowledged": len(acknowledged),
         },
     }
 
