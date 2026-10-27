@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.0
+
+- The charts are now drawn with Plotly: smoother hover with one tooltip per month listing
+  every category and the total, and legends that wrap neatly on a phone. Clicking a
+  category in a legend still hides it from the charts, and clicking a bar still opens that
+  category or its transactions.
+
 ## 2.2.0
 
 - Editing a transaction works again in Home Assistant. Home Assistant's own security check

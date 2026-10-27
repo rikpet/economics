@@ -83,6 +83,7 @@
   The numbers are also in the <a href="{{ url_for('budget', account_id=account.id, year=year, subs=1) }}">budget table</a>.</p>
 
 <script type="application/json" id="chart-data">{{ chart|tojson }}</script>
+<script src="{{ url_for('static', filename='vendor/plotly-basic.min.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='charts.js', v=app_version) }}"></script>
 <script>
 (function () {

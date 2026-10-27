@@ -34,7 +34,8 @@ src/                         flat modules, imported as top-level names (`import 
   addon.py                   add-on entry point (reads /data/options.json, serves on 8100)
   version.py                 __version__
   cli/                       click commands; cli/context.py holds AppContext (db path + account)
-  webapp/                    Flask app factory, Jinja templates, static (style.css, charts.js)
+  webapp/                    Flask app factory, Jinja templates, static (style.css, charts.js,
+                             vendor/plotly-basic.min.js)
 tests/                       pytest; tests/input_data holds SYNTHETIC fixtures only
 scripts/                     one-off maintenance scripts
 ```
@@ -71,7 +72,7 @@ change that should reach the add-on. HA only offers an update when `config.yaml`
 changes on `main`; git tags are not used.
 
 **Changelog voice.** Written for the user: what changed and what it means for them.
-Implementation detail belongs in the commit message / PR.
+Implementation detail belongs in the commit message.
 
 **Migrations are append-only.** `database.MIGRATIONS` is a list and `PRAGMA user_version`
 is the number applied. Never edit an existing entry — live databases exist at every version.
@@ -85,8 +86,10 @@ read or modify another's rows. Web routes call `load_account()` and resolve cate
 with `category_by_id()`, which also checks the account.
 
 **Commits** use the GitHub noreply address
-(`66693061+rikpet@users.noreply.github.com`), not a work email. Work on a branch and open a
-PR; CI (`.github/workflows/python-package.yml`) runs pytest on PRs to `main`.
+(`66693061+rikpet@users.noreply.github.com`), not a work email. **Pushing directly to
+`main` is the preferred way to deliver code in this repo** — no feature branch or PR
+needed. Run `pytest` before pushing; CI (`.github/workflows/python-package.yml`) also runs
+on every push to `main`, so check that run afterwards.
 
 ## Design decisions worth knowing
 
@@ -107,13 +110,19 @@ year before for January).
 the sensors, including their share of the main category's total. They still exist for
 classification. `econ balance --all` shows them.
 
-**Charts** are drawn client-side by `webapp/static/charts.js` (no dependencies, no CDN)
-from JSON the `charts` route embeds. The filter form (`f=1`, months `m`, shown categories
-`c`, `offered`) only affects the charts; the categories left out are remembered per account
-in the `economics_charts_<id>` cookie, months are not. Colors are CSS variables (`--series-1..8`,
-`--viz-other`, `--viz-context`) so dark mode needs no redraw. The categorical palette order
-is validated for colour-blind safety — don't reorder or invent colors; fold extra series
-into "Other".
+**Charts** use **Plotly** (`plotly.js-basic-dist-min` 3.7.0, vendored as
+`webapp/static/vendor/plotly-basic.min.js` with its MIT license — no CDN, since the page is
+served through Ingress). `webapp/static/charts.js` wraps it in `columns()`, `hbars()` and
+`lines()`, fed by JSON the `charts` route embeds. The basic bundle has bar, scatter and pie
+only; switching to the full bundle costs ~3 MB more. To upgrade, download the tarball from
+npm, check its `dist.integrity`, and replace the file (asset URLs carry `?v=`).
+The filter form (`f=1`, months `m`, shown categories `c`, `offered`) only affects the
+charts; the categories left out are remembered per account in the `economics_charts_<id>`
+cookie, months are not. A legend click on a category hides it via that form
+(`plotly_legendclick` returns false); other series toggle in place. Colors are read from the
+CSS variables (`--series-1..8`, `--viz-other`, `--viz-context`) at render time and the
+charts are redrawn when the color scheme changes. The categorical palette order is validated
+for colour-blind safety — don't reorder or invent colors; fold extra series into "Other".
 
 **The add-on image** is built by the Supervisor on the Pi from `Dockerfile`
 (`python:3.13-slim`, glibc, so pandas/numpy install as wheels — don't switch to the Alpine
@@ -148,6 +157,6 @@ to keep idle memory low.
 
 ## Deployment
 
-Merge to `main` with the version bumped. In HA: Add-on store → ⋮ → Check for updates, then
+Push to `main` with the version bumped. In HA: Add-on store → ⋮ → Check for updates, then
 update *Economics*; the Pi builds the image (a few minutes). The database lives in the
 add-on's `/data/economics.db` (or the `database_path` option) and is migrated on start.

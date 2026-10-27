@@ -298,6 +298,8 @@ def test_charts_page(client, path):
     assert data['subs'][0] == {'label': 'Butik', 'key': 'butik', 'value': 100}
     assert [s['key'] for s in data['stack']] == ['mat', 'uncategorized']
     assert 'charts.js?v=' in html
+    assert 'vendor/plotly-basic.min.js?v=' in html
+    assert client.get('/static/vendor/plotly-basic.min.js').status_code == 200
 
     html = client.get('/1/charts?year=2025&category=inkomst').get_data(as_text=True)
     data = json.loads(re.search(r'id="chart-data">(.*?)</script>', html, re.S).group(1))

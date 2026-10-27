@@ -1,381 +1,226 @@
-// Small SVG chart renderer for the Charts page. No dependencies.
-// Charts redraw at their container's width, so text keeps its size on phones.
+// Charts for the Charts page, drawn with Plotly (vendor/plotly-basic.min.js, no CDN).
+// Colors come from the CSS variables in style.css, so light and dark mode share one palette;
+// the charts are redrawn when the color scheme changes.
 (function () {
   "use strict";
 
-  const SVG = "http://www.w3.org/2000/svg";
-  const BAR_MAX = 24;      // px, bar thickness cap
-  const GAP = 2;           // px, surface gap between touching marks
-  const RADIUS = 4;        // px, rounded data-end
-  const AXIS_W = 52;       // px, room for y tick labels
+  const BAR_MAX = 24;  // px, bar thickness cap
+  const CONFIG = { displayModeBar: false, responsive: true, scrollZoom: false, doubleClick: false };
+  const charts = [];   // {el, render} - re-rendered on resize and theme change
 
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const money = (v) =>
     Math.round(v).toLocaleString("sv-SE").replace(/-/g, "−") + " kr";
-  const compact = (v) => {
-    const a = Math.abs(v);
-    const s = a >= 1e6 ? (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M"
-      : a >= 1e3 ? (a / 1e3).toFixed(a >= 1e4 ? 0 : 1) + "k" : String(Math.round(a));
-    return (v < 0 ? "−" : "") + s.replace(".0", "");
-  };
 
-  function el(name, attrs, parent) {
-    const node = document.createElementNS(SVG, name);
-    for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
-    if (parent) parent.appendChild(node);
-    return node;
+  function theme() {
+    return {
+      text: css("--text"), muted: css("--viz-muted"), grid: css("--viz-grid"),
+      axis: css("--viz-axis"), surface: css("--surface"), border: css("--border"),
+    };
   }
 
-  function text(parent, x, y, value, attrs) {
-    const t = el("text", Object.assign({ x, y }, attrs || {}), parent);
-    t.textContent = value;
-    return t;
+  function layout(t, extra) {
+    const font = { family: getComputedStyle(document.body).fontFamily, size: 12, color: t.muted };
+    return Object.assign({
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      font,
+      separators: ", ",  // decimal comma, space between thousands
+      margin: { l: 48, r: 12, t: 8, b: 28 },
+      dragmode: false,
+      hovermode: "x unified",
+      hoverlabel: { bgcolor: t.surface, bordercolor: t.border, font: { color: t.text, size: 13 } },
+      showlegend: false,
+      barcornerradius: 4,
+    }, extra);
   }
 
-  // Round numbers for the value axis, always including zero.
-  function ticks(min, max, count) {
-    min = Math.min(0, min);
-    max = Math.max(0, max);
-    if (min === max) max = 1;
-    const raw = (max - min) / count;
-    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-    const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
-    const lo = Math.floor(min / step) * step;
-    const hi = Math.ceil(max / step) * step;
-    const out = [];
-    for (let v = lo; v <= hi + step / 2; v += step) out.push(Math.round(v * 100) / 100);
-    return out;
+  function valueAxis(t, extra) {
+    return Object.assign({
+      fixedrange: true, tickformat: "~s", gridcolor: t.grid, gridwidth: 1,
+      zeroline: true, zerolinecolor: t.axis, zerolinewidth: 1, showline: false, ticks: "",
+    }, extra);
   }
 
-  // A bar from the baseline (y0) to the data end (y1), rounded only at the data end.
-  function barPath(x, w, y0, y1, rounded) {
-    const up = y1 < y0;
-    const h = Math.abs(y1 - y0);
-    const r = rounded ? Math.min(RADIUS, w / 2, h) : 0;
-    const top = up ? y1 : y0;
-    const bottom = up ? y0 : y1;
-    if (up) {
-      return `M${x},${bottom}V${top + r}Q${x},${top} ${x + r},${top}H${x + w - r}` +
-        `Q${x + w},${top} ${x + w},${top + r}V${bottom}Z`;
-    }
-    return `M${x},${top}V${bottom - r}Q${x},${bottom} ${x + r},${bottom}H${x + w - r}` +
-      `Q${x + w},${bottom} ${x + w},${bottom - r}V${top}Z`;
+  // Month axis: the full label ("Jan 2025") goes to the tooltip, the tick shows "Jan", or
+  // just "J" when the columns get narrow.
+  function monthAxis(t, el, labels, fullLabels) {
+    const short = el.clientWidth / labels.length < 34;
+    return {
+      fixedrange: true, type: "category", showgrid: false, showline: true, linecolor: t.axis,
+      ticks: "", tickvals: fullLabels, ticktext: labels.map((l) => (short ? l.charAt(0) : l)),
+    };
   }
 
-  // ---- tooltip -----------------------------------------------------------------------
+  function legend(t) {
+    return {
+      showlegend: true,
+      legend: {
+        orientation: "h", x: 0, xanchor: "left", y: 1.02, yanchor: "bottom",
+        font: { color: t.muted, size: 12 }, itemclick: "toggle", itemdoubleclick: false,
+        traceorder: "normal",
+      },
+    };
+  }
 
-  const tip = document.createElement("div");
-  tip.className = "viz-tooltip";
-  tip.setAttribute("role", "status");
-  tip.hidden = true;
-  document.addEventListener("DOMContentLoaded", () => document.body.appendChild(tip));
+  // The legend wraps on narrow screens; give it room instead of squeezing the plot.
+  function legendRows(el, names) {
+    const perRow = Math.max(1, Math.floor(el.clientWidth / 120));
+    return Math.ceil(names.length / perRow);
+  }
 
-  // rows: [{value, label, color, line}] - values lead, labels follow.
-  function showTip(title, rows, x, y) {
-    tip.replaceChildren();
-    const head = document.createElement("div");
-    head.className = "viz-tooltip-title";
-    head.textContent = title;
-    tip.appendChild(head);
-    for (const r of rows) {
-      const row = document.createElement("div");
-      row.className = "viz-tooltip-row";
-      if (r.color) {
-        const key = document.createElement("span");
-        key.className = r.line ? "viz-key-line" : "viz-key";
-        key.style.background = r.color;
-        row.appendChild(key);
+  // Keep bars at most BAR_MAX px thick, whatever the width.
+  function bargap(el, count, perBand) {
+    const band = Math.max(1, (el.clientWidth - 60) / count);
+    const used = Math.min(BAR_MAX * perBand + 2 * (perBand - 1), band * 0.7);
+    return Math.max(0.15, 1 - used / band);
+  }
+
+  function draw(el, render) {
+    const entry = { el, render };
+    charts.push(entry);
+    render();
+    let width = el.clientWidth;
+    new ResizeObserver(() => {
+      if (el.clientWidth !== width) {
+        width = el.clientWidth;
+        render();
       }
-      const value = document.createElement("strong");
-      value.textContent = r.value;
-      row.appendChild(value);
-      const label = document.createElement("span");
-      label.textContent = r.label;
-      row.appendChild(label);
-      tip.appendChild(row);
-    }
-    tip.hidden = false;
-    const pad = 12;
-    const w = tip.offsetWidth;
-    const h = tip.offsetHeight;
-    let left = x + pad;
-    if (left + w > window.innerWidth - 8) left = x - w - pad;
-    let top = y - h - pad;
-    if (top < 8) top = y + pad;
-    tip.style.left = Math.max(8, left) + window.scrollX + "px";
-    tip.style.top = top + window.scrollY + "px";
-  }
-
-  function hideTip() {
-    tip.hidden = true;
-  }
-
-  // Hover and keyboard focus show the same tooltip.
-  function hoverable(target, onShow, onHide) {
-    target.setAttribute("tabindex", "0");
-    target.addEventListener("pointermove", (e) => onShow(e.clientX, e.clientY));
-    target.addEventListener("pointerleave", () => { hideTip(); onHide && onHide(); });
-    target.addEventListener("focus", () => {
-      const b = target.getBoundingClientRect();
-      onShow(b.left + b.width / 2, b.top);
-    });
-    target.addEventListener("blur", () => { hideTip(); onHide && onHide(); });
-  }
-
-  // Colors stay CSS variables so light/dark switches without a redraw.
-  const color = (name) => `var(${name})`;
-
-  // ---- legend --------------------------------------------------------------------------
-
-  // Items with a key and an onHide callback become buttons that hide that series.
-  function legend(container, items, onHide) {
-    const box = document.createElement("div");
-    box.className = "viz-legend";
-    for (const item of items) {
-      const hideable = onHide && item.key;
-      const entry = document.createElement(hideable ? "button" : "span");
-      if (hideable) {
-        entry.type = "button";
-        entry.className = "viz-legend-toggle";
-        entry.title = `Hide ${item.name} from the charts`;
-        entry.addEventListener("click", () => onHide(item.key));
-      }
-      const key = document.createElement("span");
-      key.className = item.line ? "viz-key-line" : "viz-key";
-      key.style.background = item.color;
-      if (item.dashed) key.classList.add("dashed");
-      entry.appendChild(key);
-      entry.appendChild(document.createTextNode(item.name));
-      if (hideable) {
-        const x = document.createElement("span");
-        x.className = "viz-legend-x";
-        x.setAttribute("aria-hidden", "true");
-        x.textContent = "\u00d7";
-        entry.appendChild(x);
-      }
-      box.appendChild(entry);
-    }
-    container.before(box);
-  }
-
-  // ---- value axis frame ------------------------------------------------------------------
-
-  function frame(svg, width, height, top, bottom, values, labels) {
-    const t = ticks(Math.min(...values), Math.max(...values), 4);
-    const lo = t[0];
-    const hi = t[t.length - 1];
-    const plotH = height - top - bottom;
-    const y = (v) => top + (hi - v) / (hi - lo) * plotH;
-    const grid = el("g", { class: "viz-grid" }, svg);
-    for (const v of t) {
-      el("line", { x1: AXIS_W, x2: width, y1: y(v), y2: y(v), class: v === 0 ? "viz-baseline" : "" }, grid);
-      text(grid, AXIS_W - 8, y(v) + 4, compact(v), { class: "viz-tick", "text-anchor": "end" });
-    }
-    const band = (width - AXIS_W) / labels.length;
-    // Narrow screens get one-letter months; the tooltip still names the full month.
-    const short = band < 32;
-    labels.forEach((label, i) => {
-      text(grid, AXIS_W + band * i + band / 2, height - 6, short ? label.charAt(0) : label,
-        { class: "viz-tick", "text-anchor": "middle" });
-    });
-    return { y, band, x: (i) => AXIS_W + band * i };
+    }).observe(el);
+    return entry;
   }
 
   // ---- column chart (grouped or stacked) ---------------------------------------------------
 
-  function columns(container, opts) {
-    const series = opts.series;
-    legend(container, series.map((s) => ({ name: s.name, color: color(s.color), key: s.key })), opts.onHide);
-    function draw() {
-      container.replaceChildren();
-      const width = container.clientWidth;
-      const height = opts.height || 260;
-      const svg = el("svg", { width, height, role: "img", "aria-label": opts.label }, container);
-      const n = opts.labels.length;
-      let extent = [];
-      if (opts.stacked) {
-        for (let i = 0; i < n; i++) {
-          let pos = 0, neg = 0;
-          for (const s of series) (s.values[i] >= 0 ? (pos += s.values[i]) : (neg += s.values[i]));
-          extent.push(pos, neg);
-        }
-      } else {
-        extent = series.flatMap((s) => s.values);
+  function columns(el, opts) {
+    const x = opts.fullLabels || opts.labels;
+    draw(el, () => {
+      const t = theme();
+      const traces = opts.series.map((s) => ({
+        type: "bar", name: s.name, x, y: s.values,
+        marker: { color: css(s.color), line: { width: 0 } },
+        hovertemplate: "%{y:,.0f} kr",
+        meta: s.key || null,
+      }));
+      if (opts.stacked && opts.series.length > 1) {
+        // An invisible trace so the shared tooltip also lists the month's total.
+        traces.push({
+          type: "scatter", mode: "markers", name: "Total", x, showlegend: false,
+          y: x.map((_, i) => opts.series.reduce((sum, s) => sum + s.values[i], 0)),
+          marker: { opacity: 0 }, hovertemplate: "<b>%{y:,.0f} kr</b>",
+        });
       }
-      const f = frame(svg, width, height, 10, 26, extent, opts.labels);
-      const marks = el("g", {}, svg);
-      const groups = [];
+      const perBand = opts.stacked ? 1 : opts.series.length;
+      const rows = legendRows(el, opts.series);
+      const l = layout(t, Object.assign({
+        height: (opts.height || 250) + rows * 22,
+        barmode: opts.stacked ? "relative" : "group",
+        bargap: bargap(el, x.length, perBand),
+        bargroupgap: opts.stacked ? 0 : 0.08,
+        xaxis: monthAxis(t, el, opts.labels, x),
+        yaxis: valueAxis(t),
+        margin: { l: 48, r: 12, t: 14 + rows * 22, b: 28 },
+      }, legend(t)));
+      Plotly.react(el, traces, l, CONFIG);
+    });
 
-      for (let i = 0; i < n; i++) {
-        const g = el("g", { class: "viz-column" }, marks);
-        groups.push(g);
-        if (opts.stacked) {
-          const w = Math.min(BAR_MAX, f.band * 0.6);
-          const x = f.x(i) + (f.band - w) / 2;
-          let pos = 0, neg = 0;
-          const pieces = series.map((s) => ({ s, v: s.values[i] })).filter((p) => p.v);
-          const lastPos = pieces.filter((p) => p.v > 0).pop();
-          const lastNeg = pieces.filter((p) => p.v < 0).pop();
-          for (const p of pieces) {
-            const start = p.v > 0 ? pos : neg;
-            const end = start + p.v;
-            if (p.v > 0) pos = end; else neg = end;
-            let y0 = f.y(start), y1 = f.y(end);
-            // Surface gap between stacked segments, taken from the segment's far end.
-            if (Math.abs(y1 - y0) > GAP) y1 += p.v > 0 ? GAP : -GAP;
-            el("path", {
-              d: barPath(x, w, y0, y1, p === lastPos || p === lastNeg),
-              style: `fill:${color(p.s.color)}`,
-            }, g);
-          }
-        } else {
-          const k = series.length;
-          const w = Math.min(BAR_MAX, (f.band * 0.7 - GAP * (k - 1)) / k);
-          const x0 = f.x(i) + (f.band - (w * k + GAP * (k - 1))) / 2;
-          series.forEach((s, j) => {
-            if (!s.values[i]) return;
-            el("path", {
-              d: barPath(x0 + j * (w + GAP), w, f.y(0), f.y(s.values[i]), true),
-              style: `fill:${color(s.color)}`,
-            }, g);
-          });
+    // Legend click hides the category from the charts (for series with a key); other
+    // series toggle in place, Plotly's default.
+    if (opts.onHide) {
+      el.on("plotly_legendclick", (event) => {
+        const key = event.data[event.curveNumber].meta;
+        if (key) {
+          opts.onHide(key);
+          return false;
         }
-        // The whole month band is the hit target.
-        const hit = el("rect", {
-          x: f.x(i), y: 0, width: f.band, height: height - 20, class: "viz-hit",
-          "aria-label": opts.labels[i],
-        }, g);
-        hoverable(hit, (cx, cy) => {
-          groups.forEach((other) => other.classList.toggle("dim", other !== g));
-          const rows = series.filter((s) => s.values[i]).map((s) => ({
-            value: money(s.values[i]), label: s.name, color: color(s.color),
-          })).reverse();
-          if (opts.stacked && rows.length > 1) {
-            rows.push({ value: money(series.reduce((a, s) => a + s.values[i], 0)), label: "Total" });
-          }
-          if (!rows.length) rows.push({ value: money(0), label: "" });
-          showTip(`${opts.fullLabels ? opts.fullLabels[i] : opts.labels[i]}`, rows, cx, cy);
-        }, () => groups.forEach((other) => other.classList.remove("dim")));
-      }
+        return true;
+      });
     }
-    draw();
-    observe(container, draw);
   }
 
   // ---- horizontal bars ------------------------------------------------------------------------
 
-  function hbars(container, opts) {
-    function draw() {
-      container.replaceChildren();
-      const items = opts.items;
-      if (!items.length) return;
-      const width = container.clientWidth;
+  function hbars(el, opts) {
+    const items = opts.items;
+    if (!items.length) return;
+    draw(el, () => {
+      const t = theme();
+      const accent = css("--series-1");
+      const context = css("--viz-context");
+      const trace = {
+        type: "bar", orientation: "h",
+        y: items.map((d) => d.label), x: items.map((d) => d.value),
+        marker: {
+          color: items.map((d) => (d.key && d.key === opts.selected ? accent : context)),
+          line: { width: 0 },
+        },
+        text: items.map((d) => money(d.value)), textposition: "outside", cliponaxis: false,
+        textfont: { color: t.muted, size: 12 },
+        hovertemplate: "%{y}<br><b>%{x:,.0f} kr</b><extra></extra>",
+      };
       const row = 30;
-      const height = items.length * row + 8;
-      const svg = el("svg", { width, height, role: "img", "aria-label": opts.label }, container);
-      const labelW = Math.min(170, width * 0.38);
-      const valueW = 78;
-      const max = Math.max(...items.map((d) => d.value), 0);
-      const min = Math.min(...items.map((d) => d.value), 0);
-      const span = (max - min) || 1;
-      const plot = width - labelW - valueW;
-      const x = (v) => labelW + (v - min) / span * plot;
-      el("line", { x1: x(0), x2: x(0), y1: 0, y2: height, class: "viz-baseline" }, svg);
-      items.forEach((d, i) => {
-        const y = i * row + 4;
-        const g = el("g", { class: "viz-hbar" + (d.key && d.key === opts.selected ? " selected" : "") }, svg);
-        const label = text(g, labelW - 10, y + row / 2 + 4, d.label, { class: "viz-label", "text-anchor": "end" });
-        if (d.href) label.classList.add("link");
-        const h = Math.min(BAR_MAX - 6, row - 10);
-        const top = y + (row - h) / 2;
-        const x0 = x(0), x1 = x(d.value);
-        if (d.value) {
-          const r = Math.min(RADIUS, h / 2, Math.abs(x1 - x0));
-          const right = x1 > x0;
-          const a = Math.min(x0, x1), b = Math.max(x0, x1);
-          const path = right
-            ? `M${a},${top}H${b - r}Q${b},${top} ${b},${top + r}V${top + h - r}Q${b},${top + h} ${b - r},${top + h}H${a}Z`
-            : `M${b},${top}H${a + r}Q${a},${top} ${a},${top + r}V${top + h - r}Q${a},${top + h} ${a + r},${top + h}H${b}Z`;
-          el("path", { d: path, class: "viz-hbar-mark" }, g);
-        }
-        text(g, Math.max(x0, x1) + 6, y + row / 2 + 4, money(d.value), { class: "viz-value" });
-        const hit = el("rect", { x: 0, y, width, height: row, class: "viz-hit", "aria-label": d.label }, g);
-        hoverable(hit, (cx, cy) => {
-          g.classList.add("hover");
-          showTip(d.label, [{ value: money(d.value), label: opts.valueLabel || "" }], cx, cy);
-        }, () => g.classList.remove("hover"));
-        if (d.href) {
-          hit.style.cursor = "pointer";
-          hit.addEventListener("click", () => { location.href = d.href; });
-          hit.addEventListener("keydown", (e) => { if (e.key === "Enter") location.href = d.href; });
-        }
+      const l = layout(t, {
+        height: items.length * row + 16,
+        hovermode: "closest",
+        bargap: 0.35,
+        margin: { l: 8, r: 90, t: 4, b: 4 },
+        xaxis: { visible: false, fixedrange: true, zeroline: true, zerolinecolor: t.axis },
+        yaxis: {
+          fixedrange: true, autorange: "reversed", automargin: true, ticks: "",
+          tickfont: { color: t.text, size: 13 }, showgrid: false, ticksuffix: "  ",
+        },
+      });
+      Plotly.react(el, [trace], l, CONFIG);
+    });
+
+    if (items.some((d) => d.href)) {
+      el.classList.add("clickable");
+      el.on("plotly_click", (event) => {
+        const item = items[event.points[0].pointIndex];
+        if (item && item.href) location.href = item.href;
       });
     }
-    draw();
-    observe(container, draw);
   }
 
-  // ---- line chart with crosshair ------------------------------------------------------------
+  // ---- line chart --------------------------------------------------------------------------------
 
-  function lines(container, opts) {
-    const series = opts.series;
-    legend(container, series.map((s) => ({ name: s.name, color: color(s.color), line: true })));
-    function draw() {
-      container.replaceChildren();
-      const width = container.clientWidth;
-      const height = opts.height || 240;
-      const svg = el("svg", { width, height, role: "img", "aria-label": opts.label }, container);
-      const f = frame(svg, width, height, 12, 26, series.flatMap((s) => s.values), opts.labels);
-      const cx = (i) => f.x(i) + f.band / 2;
-      // Draw the context series first, so the main one sits on top.
-      for (const s of [...series].reverse()) {
-        if (!s.values.length) continue;
-        const stroke = color(s.color);
-        el("path", {
-          d: s.values.map((v, i) => `${i ? "L" : "M"}${cx(i)},${f.y(v)}`).join(""),
-          class: "viz-line", style: `stroke:${stroke}`,
-        }, svg);
+  function lines(el, opts) {
+    const x = opts.fullLabels || opts.labels;
+    draw(el, () => {
+      const t = theme();
+      // The context series first, so the main one is drawn on top.
+      const traces = [...opts.series].reverse().filter((s) => s.values.length).map((s) => {
         const last = s.values.length - 1;
-        el("circle", { cx: cx(last), cy: f.y(s.values[last]), r: 4, class: "viz-dot", style: `fill:${stroke}` }, svg);
-      }
-      const cross = el("line", { y1: 8, y2: height - 22, class: "viz-crosshair", visibility: "hidden" }, svg);
-      const dots = series.map((s) => el("circle", {
-        r: 4, class: "viz-dot", style: `fill:${color(s.color)}`, visibility: "hidden",
-      }, svg));
-      for (let i = 0; i < opts.labels.length; i++) {
-        const hit = el("rect", { x: f.x(i), y: 0, width: f.band, height, class: "viz-hit", "aria-label": opts.labels[i] }, svg);
-        hoverable(hit, (px, py) => {
-          cross.setAttribute("x1", cx(i));
-          cross.setAttribute("x2", cx(i));
-          cross.setAttribute("visibility", "visible");
-          const rows = [];
-          series.forEach((s, j) => {
-            const has = i < s.values.length;
-            dots[j].setAttribute("visibility", has ? "visible" : "hidden");
-            if (!has) return;
-            dots[j].setAttribute("cx", cx(i));
-            dots[j].setAttribute("cy", f.y(s.values[i]));
-            rows.push({ value: money(s.values[i]), label: s.name, color: color(s.color), line: true });
-          });
-          showTip(opts.fullLabels ? opts.fullLabels[i] : opts.labels[i], rows, px, py);
-        }, () => {
-          cross.setAttribute("visibility", "hidden");
-          dots.forEach((d) => d.setAttribute("visibility", "hidden"));
-        });
-      }
-    }
-    draw();
-    observe(container, draw);
+        return {
+          type: "scatter", mode: "lines+markers", name: s.name, x: x.slice(0, s.values.length),
+          y: s.values,
+          line: { color: css(s.color), width: 2, shape: "linear" },
+          // Only the end point gets a marker, ringed in the surface color.
+          marker: {
+            color: css(s.color), size: s.values.map((_, i) => (i === last ? 9 : 0)),
+            line: { color: t.surface, width: 2 },
+          },
+          hovertemplate: "%{y:,.0f} kr",
+        };
+      });
+      const xaxis = Object.assign(monthAxis(t, el, opts.labels, x), {
+        showspikes: true, spikemode: "across", spikesnap: "cursor", spikethickness: 1,
+        spikedash: "solid", spikecolor: t.axis,
+      });
+      const l = layout(t, Object.assign({
+        height: opts.height || 250,
+        xaxis,
+        yaxis: valueAxis(t, { rangemode: "tozero" }),
+        margin: { l: 48, r: 16, t: 36, b: 28 },
+      }, legend(t)));
+      Plotly.react(el, traces, l, CONFIG);
+    });
   }
 
-  function observe(container, draw) {
-    let last = container.clientWidth;
-    new ResizeObserver(() => {
-      if (container.clientWidth !== last) {
-        last = container.clientWidth;
-        draw();
-      }
-    }).observe(container);
-  }
+  // Redraw with the other palette when the color scheme changes.
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    charts.forEach((c) => c.render());
+  });
 
   window.EconomicsCharts = { columns, hbars, lines };
 })();

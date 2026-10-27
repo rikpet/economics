@@ -1,6 +1,6 @@
 [project]
 name = "economics"
-version = "2.2.0"
+version = "2.3.0"
 description = "Handling my private and family economy"
 dependencies = [
     "pandas",
@@ -33,7 +33,7 @@ pythonpath = ["src", "."]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-webapp = ["templates/*.html", "static/*"]
+webapp = ["templates/*.html", "static/*", "static/vendor/*"]
 
 [tool.ruff]
 line-length = 100

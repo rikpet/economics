@@ -184,40 +184,10 @@ table.budget td.total { font-weight: 600; }
 .chart-card .hint { margin-top: -.4rem; }
 .sub-head { margin-top: 1.5rem; }
 .chart { width: 100%; min-height: 40px; }
-.chart svg { display: block; overflow: visible; }
-
-.viz-grid line { stroke: var(--viz-grid); stroke-width: 1; shape-rendering: crispEdges; }
-.viz-grid line.viz-baseline, line.viz-baseline { stroke: var(--viz-axis); stroke-width: 1; shape-rendering: crispEdges; }
-.viz-tick { fill: var(--viz-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.viz-label { fill: var(--text); font-size: 13px; }
-.viz-label.link { fill: var(--text); text-decoration: underline; text-decoration-color: var(--border); }
-.viz-value { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.viz-hit { fill: transparent; outline: none; }
-.viz-hit:focus-visible { stroke: var(--accent); stroke-width: 2; }
-.viz-column path { transition: opacity .12s; }
-.viz-column.dim path { opacity: .35; }
-.viz-hbar-mark { fill: var(--viz-context); transition: fill .12s; }
-.viz-hbar.selected .viz-hbar-mark, .viz-hbar.hover .viz-hbar-mark { fill: var(--series-1); }
-.viz-hbar.selected .viz-label { font-weight: 600; }
-.viz-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.viz-dot { stroke: var(--surface); stroke-width: 2; }
-.viz-crosshair { stroke: var(--viz-axis); stroke-width: 1; }
-
-.viz-legend { display: flex; flex-wrap: wrap; gap: .3rem 1rem; margin: 0 0 .6rem; font-size: .85rem; color: var(--muted); }
-.viz-legend > span { display: inline-flex; align-items: center; gap: .4rem; }
-.viz-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex: none; }
-.viz-key-line { display: inline-block; width: 14px; height: 2px; border-radius: 1px; flex: none; }
-
-.viz-tooltip {
-  position: absolute; z-index: 10; pointer-events: none; min-width: 8rem;
-  background: var(--surface); color: var(--text); border: 1px solid var(--border);
-  border-radius: 8px; padding: .45rem .6rem; font-size: .85rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, .12);
-}
-.viz-tooltip-title { color: var(--muted); margin-bottom: .2rem; }
-.viz-tooltip-row { display: flex; align-items: center; gap: .45rem; white-space: nowrap; }
-.viz-tooltip-row strong { font-variant-numeric: tabular-nums; }
-.viz-tooltip-row span:last-child { color: var(--muted); }
+/* Plotly draws the charts; these keep its chrome in line with the page. */
+.chart .js-plotly-plot, .chart .plot-container { width: 100%; }
+.chart.clickable .nsewdrag, .chart.clickable .bars .point { cursor: pointer; }
+.chart .legendtoggle { cursor: pointer; }
 
 /* ---- categories grid ------------------------------------------------------------------ */
 .cat-group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .75rem; }
@@ -260,14 +230,6 @@ table.budget td.total { font-weight: 600; }
 .chip input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chip-action { min-height: 0; padding: .25rem .65rem; border-radius: 999px; font-size: .85rem; }
-.viz-legend-toggle {
-  display: inline-flex; align-items: center; gap: .4rem; min-height: 0; padding: .1rem .35rem;
-  margin: -.1rem -.35rem; background: none; border: 0; border-radius: 4px; color: var(--muted); font-size: inherit;
-}
-.viz-legend-toggle:hover { background: var(--surface-2); color: var(--text); }
-.viz-legend-x { opacity: 0; font-size: .9em; }
-.viz-legend-toggle:hover .viz-legend-x, .viz-legend-toggle:focus-visible .viz-legend-x { opacity: 1; }
-@media (hover: none) { .viz-legend-x { opacity: .6; } }
 @media (max-width: 640px) {
   .chip span, .chip-action { font-size: 16px !important; }
 }
