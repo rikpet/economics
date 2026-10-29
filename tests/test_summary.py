@@ -55,7 +55,7 @@ def test_migration_sets_defaults_on_an_existing_database(tmp_path):
         CREATE TABLE c2 AS SELECT id, account_id, main_category, sub_category, invert_sign,
             position, hidden FROM categories;
         DROP TABLE categories; ALTER TABLE c2 RENAME TO categories;
-        DROP TABLE budgets; DROP TABLE zero_check_acks;
+        DROP TABLE budgets; DROP TABLE zero_check_acks; DROP TABLE person_months; DROP TABLE people;
         PRAGMA user_version = 4;
     ''')
     conn.close()

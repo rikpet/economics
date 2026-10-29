@@ -454,3 +454,40 @@ table.budget tfoot tr.summary-balance > * { border-top: 2px solid var(--border);
   .save-bar button { flex: 1; }
 }
 .import-result table.tx th, .import-result table.tx td { padding: .45rem .6rem; }
+
+/* Transfers: one card per person for the chosen month, and the year below. */
+.transfer-switch { display: flex; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+.transfer-switch form { flex: 0 1 14rem; }
+.transfer-switch select { width: 100%; }
+.transfer-people { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .8rem; }
+.transfer-person { margin: 0; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: .4rem 1rem 1rem; display: grid; gap: .7rem; min-width: 0; align-content: start; }
+.transfer-person legend { font-weight: 600; font-size: 1.1rem; padding: 0 .3rem; }
+.transfer-person > .hint { margin: 0; }
+.transfer-person label { display: grid; gap: .25rem; }
+.transfer-person input { width: 100%; }
+.field-hint { color: var(--muted); font-size: .8rem; }
+.transfer-result { margin: .2rem 0 0; font-size: 1.05rem; }
+.transfer-result strong { font-size: 1.3rem; }
+.save-bar #transfer-total { font-size: 1.15rem; }
+table.transfer-year { width: 100%; }
+table.transfer-year th, table.transfer-year td { padding: .4rem .6rem; }
+table.transfer-year thead th { white-space: normal; overflow-wrap: anywhere; vertical-align: bottom; }
+table.transfer-year tr.current > * { background: var(--surface-2); }
+table.transfer-year tfoot > tr > * { border-top: 2px solid var(--border); font-weight: 600; }
+details.card > summary h2 { display: inline; margin: 0; font-size: 1.1rem; }
+details.card[open] > summary { margin-bottom: .8rem; }
+.person-form { margin-bottom: .5rem; }
+@media (max-width: 640px) {
+  .transfer-switch form { flex: 1; }
+  .transfer-switch .button { min-width: 2.8rem; justify-content: center; font-size: 1.3rem; padding: 0; }
+  .transfer-person { padding: .3rem .8rem .8rem; }
+  .save-bar { flex-wrap: wrap; justify-content: space-between; }
+  table.transfer-year { font-size: .9rem; }
+  table.transfer-year th, table.transfer-year td { padding: .45rem .3rem; }
+}
+@media (max-width: 640px) {
+  .person-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: .4rem; }
+  .person-form > input[name="name"] { grid-column: 1 / -1; }
+  .person-form > select { min-width: 0; }
+}

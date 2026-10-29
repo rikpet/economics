@@ -42,6 +42,7 @@ from cli.advanced import (
     run_db_schema
 )
 from cli.checks import acknowledge, list_checks, unacknowledge
+from cli.transfers import set_transfer, show_transfers
 from cli.web import web
 from database import create_tables
 
@@ -95,6 +96,15 @@ def check():
 check.add_command(list_checks)
 check.add_command(acknowledge)
 check.add_command(unacknowledge)
+
+
+@cli.group()
+def transfer():
+    """What each person transfers to the account (e.g. the family's joint account)."""
+    pass
+
+transfer.add_command(show_transfers)
+transfer.add_command(set_transfer)
 
 
 @cli.group()

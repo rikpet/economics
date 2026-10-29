@@ -28,6 +28,7 @@ src/                         flat modules, imported as top-level names (`import 
                              (incl. splits), issuer rules
   balance.py                 Balance: one month's totals per (main, sub) category
   budget.py                  monthly_balances(), budget_table(), cash_flow(), hidden-category helpers
+  transfers.py               transfer_year(): what each person transfers to an account; parse_sum()
   operations.py              import/classify/modify actions shared by CLI and web
   parser.py                  SEB / Remember / legacy csv parsers
   category_templates.py      category trees for new accounts (private, family, empty)
@@ -138,6 +139,17 @@ is red: expense groups over budget in any month up to now, income groups (every 
 Income) under budget in finished months only; totals against budget × months counted.
 Without a budget nothing is coloured — amounts stay in the normal text colour.
 
+**Transfers** (migration 9, tables `people` and `person_months`): the people who pay into
+an account (the family's joint account), and per month what they entered: income,
+one-off costs (both with the text as typed, `income_input`/`costs_input`, since
+`parse_sum()` accepts `=100+250`) and allowance. `transfers.transfer_year()` gives
+`income − costs − allowance` per person and month; the allowance carries over from the last
+month it was entered, also across years. Pension is deliberately left out. A person with
+`linked_account_id` reads empty fields from that account like the derived allowance does
+(Bokföring › Inkomst, previous month's Bokföring › Familjeutlägg) and shows
+Bokföring › Familjekonto as what was transferred. That link is the one place an account
+reads another account's data on purpose; people and their months are still account-scoped.
+
 **Hidden categories** (`categories.hidden`) are left out of the budget table, the charts and
 the sensors, including their share of the main category's total. They still exist for
 classification. `econ balance --all` shows them.
@@ -194,7 +206,7 @@ to keep idle memory low.
   script in `base.html`. Check new pages at 360 and 390px: no element wider than the
   screen, tap targets about 40px.
 - **Issuers are cleaned before they are stored or looked up.** SEB card purchases end with
-  the purchase date (`MAXI ICA STO/25-12-30`); `parser.clean_issuer()` drops it, and
+  the purchase date (`TESTBUTIKEN STO/25-12-30`); `parser.clean_issuer()` drops it, and
   `classify_issuer()` / `get_issuer_classification()` apply it too, so a rule typed with a
   date still matches. Migration 8 cleaned existing rows with its own frozen copy of the
   regex. The verification-number hash still uses the raw text, so re-imports dedupe.

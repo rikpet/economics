@@ -25,7 +25,7 @@ from flask.sessions import SecureCookieSessionInterface
 import database as db
 import operations
 from version import __version__
-from app_types import Account, Category, IssuerClassification, SplitPart
+from app_types import Account, Category, IssuerClassification, PersonMonth, SplitPart
 from budget import (
     budget_checks,
     budget_table,
@@ -39,6 +39,7 @@ from budget import (
     zero_check_flags,
 )
 from category_templates import KINDS, TEMPLATES
+from transfers import parse_sum, transfer_year
 from utils import month_to_date
 
 ACCOUNT_COOKIE = "economics_account"
@@ -49,6 +50,8 @@ KIND_LABELS = {"income": "Income", "expense": "Expense", "fixed": "Fixed expense
 STACK_SERIES = 7  # colored categories in the stacked chart; the rest are "Other"
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August",
+               "September", "October", "November", "December"]
 
 
 class IngressMiddleware:
@@ -132,6 +135,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
     app.wsgi_app = IngressMiddleware(app.wsgi_app)
     app.jinja_env.filters["money"] = format_money
     app.jinja_env.filters["exact"] = format_exact
+    app.jinja_env.filters["amount_input"] = format_amount
 
     db.create_tables(database_path)
 
@@ -194,6 +198,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
             "accounts": db.get_accounts(dbp()),
             "account": g.get("account"),
             "months": MONTHS,
+            "month_names": MONTH_NAMES,
             "app_version": __version__,
         }
 
@@ -552,6 +557,98 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         except ValueError as e:
             flash(str(e), "error")
         return redirect(transactions_url(account_id, request.args.get("back")))
+
+    # ---------------------------------------------------------------------------------
+    # Transfers: what each person puts into the account per month
+    # ---------------------------------------------------------------------------------
+
+    def transfers_url(account_id: int, year: int, month: int) -> str:
+        return url_for("transfers", account_id=account_id, year=year, month=month)
+
+    def linked_account_arg() -> int | None:
+        value = request.form.get("linked_account_id", "")
+        return int(value) if value.isdigit() else None
+
+    @app.get("/<int:account_id>/transfers")
+    def transfers(account_id: int):
+        load_account(account_id)
+        now = datetime.now()
+        year = year_arg()
+        month = request.args.get("month", type=int) or (now.month if year == now.year else 12)
+        month = min(max(month, 1), 12)
+        people = db.get_people(dbp(), account_id)
+        by_person = transfer_year(dbp(), account_id, year)
+        totals = [sum(by_person[p.id][m].to_account for p in people
+                      if by_person[p.id][m].has_data) for m in range(12)]
+        has_data = [any(by_person[p.id][m].has_data for p in people) for m in range(12)]
+        accounts = {a.id: a for a in db.get_accounts(dbp())}
+        return render_template(
+            "transfers.html", year=year, month=month, people=people, by_person=by_person,
+            totals=totals, has_data=has_data, linked_names=accounts,
+            month_total=sum(by_person[p.id][month - 1].to_account for p in people),
+            link_choices=[a for a in accounts.values() if a.id != account_id],
+            years=sorted({*year_options(account_id), year}, reverse=True),
+        )
+
+    @app.post("/<int:account_id>/transfers")
+    def save_transfers(account_id: int):
+        load_account(account_id)
+        year = request.form.get("year", type=int) or datetime.now().year
+        month = min(max(request.form.get("month", type=int) or 1, 1), 12)
+        values, errors = [], []
+        for person in db.get_people(dbp(), account_id):
+            fields = {}
+            for field in ("income", "costs", "allowance"):
+                text = request.form.get(f"{field}_{person.id}", "").strip()
+                try:
+                    fields[field] = (parse_sum(text), text or None)
+                except ValueError:
+                    errors.append(f"{person.name}: “{text}” is not an amount.")
+            if len(fields) == 3:
+                values.append(PersonMonth(
+                    person.id, year, month,
+                    income=fields["income"][0], income_input=fields["income"][1],
+                    costs=fields["costs"][0], costs_input=fields["costs"][1],
+                    allowance=fields["allowance"][0]))
+        if errors:
+            for error in errors:
+                flash(error, "error")
+            flash("Nothing was saved.", "error")
+            return redirect(transfers_url(account_id, year, month))
+        for value in values:
+            db.set_person_month(dbp(), account_id, value)
+        flash(f"Saved {MONTH_NAMES[month - 1]} {year}.", "ok")
+        return redirect(transfers_url(account_id, year, month))
+
+    @app.post("/<int:account_id>/transfers/people")
+    def add_person(account_id: int):
+        load_account(account_id)
+        try:
+            db.add_person(dbp(), account_id, request.form.get("name", ""), linked_account_arg())
+            flash(f"{request.form.get('name', '').strip()} added.", "ok")
+        except ValueError as e:
+            flash(str(e), "error")
+        return redirect(url_for("transfers", account_id=account_id,
+                                year=request.args.get("year", ""), month=request.args.get("month", "")))
+
+    @app.post("/<int:account_id>/transfers/people/<int:person_id>")
+    def update_person(account_id: int, person_id: int):
+        load_account(account_id)
+        person = db.get_person(dbp(), account_id, person_id)
+        if person is None:
+            abort(404)
+        try:
+            if request.form.get("action") == "delete":
+                db.delete_person(dbp(), account_id, person_id)
+                flash(f"{person.name} and their figures are removed.", "ok")
+            else:
+                db.update_person(dbp(), account_id, person_id, request.form.get("name", ""),
+                                 linked_account_arg())
+                flash("Saved.", "ok")
+        except ValueError as e:
+            flash(str(e), "error")
+        return redirect(url_for("transfers", account_id=account_id,
+                                year=request.args.get("year", ""), month=request.args.get("month", "")))
 
     # ---------------------------------------------------------------------------------
     # Import

@@ -1,10 +1,24 @@
 # Changelog
 
+## 2.11.0
+
+- New **Transfers** page: how much each person should transfer to the joint account in a
+  month, as income − one-off costs − allowance (pension is not included). Add the people at
+  the bottom of the page, pick a month and fill in their figures. Fields take sums such as
+  `=700+500`, the result updates as you type, and the allowance carries over to the
+  following months until you change it. A year table shows every month per person and
+  together.
+- A person can be linked to their own account (e.g. Privat). Empty fields then use its
+  Bokföring › Inkomst and the previous month's Bokföring › Familjeutlägg, and the page shows
+  what was actually transferred according to Bokföring › Familjekonto.
+- Home Assistant: a `transfer_<person>` sensor per person with this month's amount.
+- Command line: `econ transfer show` and `econ transfer set`.
+
 ## 2.10.0
 
 - Issuer rules now work for card purchases from SEB. Their text ends with the purchase
-  date (`MAXI ICA STO/25-12-30`), which made every purchase a new issuer. The date is now
-  dropped, so the issuer is `MAXI ICA STO` and one rule covers every purchase in that
+  date (`TESTBUTIKEN STO/25-12-30`), which made every purchase a new issuer. The date is now
+  dropped, so the issuer is `TESTBUTIKEN STO` and one rule covers every purchase in that
   shop. Transactions and rules already in the database are updated the same way when the
   add-on starts. If you had several rules for one shop with different dates, the newest is
   kept, and a rule without a date always wins.

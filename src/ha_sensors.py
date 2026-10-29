@@ -14,6 +14,7 @@ from datetime import datetime
 
 import database as db
 from app_types import Account
+from transfers import transfer_year
 from budget import (
     completed_months,
     hidden_categories,
@@ -147,6 +148,34 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
             "account": account.name,
         },
     }
+
+    # What each person transfers to the account this month (Transfers page).
+    if db.get_people(database_path, account.id):
+        months = transfer_year(database_path, account.id, now.year)
+        previous_months = (months if now.month > 1
+                           else transfer_year(database_path, account.id, now.year - 1))
+        for person in db.get_people(database_path, account.id):
+            t = months[person.id][now.month - 1]
+            p = previous_months[person.id][now.month - 2]  # December when now is January
+            attributes = {
+                "friendly_name": f"{account.name} transfer {person.name}",
+                "unit_of_measurement": currency,
+                "device_class": "monetary",
+                "icon": "mdi:bank-transfer",
+                "account": account.name,
+                "person": person.name,
+                "month": now.strftime("%Y-%m"),
+                "income": round(t.income, 2),
+                "one_off_costs": round(t.costs, 2),
+                "allowance": round(t.allowance, 2),
+                "previous_month": round(p.to_account, 2) if p.has_data else None,
+            }
+            if t.transferred is not None:
+                attributes["transferred"] = round(t.transferred, 2)
+            states[f"{prefix}_transfer_{slugify(person.name)}"] = {
+                "state": round(t.to_account, 2) if t.has_data else "unknown",
+                "attributes": attributes,
+            }
 
     latest = db.latest_transaction_date(database_path, account.id)
     states[f"{prefix}_latest_transaction"] = {

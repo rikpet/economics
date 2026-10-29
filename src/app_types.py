@@ -68,3 +68,25 @@ class Category:
         if not self.invert_sign:
             return 'income'
         return {'fixed': 'fixed', 'transfer': 'transfer'}.get(self.expense_role, 'expense')
+
+
+@dataclass
+class Person:
+    """Someone who transfers money to an account, e.g. to the family's joint account."""
+    id: int
+    name: str
+    linked_account_id: int | None = None  # their own account, to read income and outlays from
+    position: int = 0
+
+
+@dataclass
+class PersonMonth:
+    """What a person entered for a month. None means not entered."""
+    person_id: int
+    year: int
+    month: int
+    income: float | None = None
+    income_input: str | None = None  # as typed, e.g. '35000+5000'
+    costs: float | None = None       # one-off costs paid for the joint account
+    costs_input: str | None = None
+    allowance: float | None = None   # carries over to later months until changed

@@ -55,7 +55,7 @@ def test_index_redirects_to_first_account(client):
 
 def test_pages_render(client):
     for url in ('/1/', '/1/?subs=0&year=2024', '/1/transactions', '/1/classify', '/1/import',
-                '/1/issuers', '/1/categories', '/accounts'):
+                '/1/issuers', '/1/categories', '/1/transfers', '/accounts'):
         response = client.get(url)
         assert response.status_code == 200, url
     assert client.get('/99/').status_code == 404
@@ -242,7 +242,8 @@ def test_no_url_is_blocked_by_home_assistant(client, path):
         tx = f'/{account_id}/transactions'
         pages += [f'/{account_id}/', f'/{account_id}/?year=2025&subs=1', f'/{account_id}/charts?year=2025',
                   tx, f'{tx}?year=2025&month=3', f'{tx}?year=2025&category=bokföring&sub=utlägg/skuld',
-                  f'{account_id}/classify', f'/{account_id}/issuers', f'/{account_id}/categories']
+                  f'{account_id}/classify', f'/{account_id}/issuers', f'/{account_id}/categories',
+                  f'/{account_id}/transfers?year=2025&month=1']
     pages += [f'/1/transactions/{t.id}?back=year%3D2025' for t in db.get_transactions(path, 1)]
 
     checked = 0

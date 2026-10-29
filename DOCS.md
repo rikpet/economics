@@ -40,8 +40,8 @@ under **Categories**. Switch account with the selector at the top.
    **Save** once. Transactions you leave without a category stay on the page. Tick
    *Remember for this issuer* to classify that issuer automatically from now on.
 
-Card purchases in SEB exports end with the purchase date (`MAXI ICA STO/25-12-30`). The
-date is dropped, so the issuer is `MAXI ICA STO` and one issuer rule covers every purchase
+Card purchases in SEB exports end with the purchase date (`TESTBUTIKEN STO/25-12-30`). The
+date is dropped, so the issuer is `TESTBUTIKEN STO` and one issuer rule covers every purchase
 there.
 3. **Budget**: amounts per month and category. Click an amount to see its transactions.
 4. **Charts**: income and expenses per month, the spread over categories, and one category
@@ -83,6 +83,35 @@ Bokföring or internal transfers: a whole group with *Hide from budget*, or a si
 sub-category by unticking *Show*. Hidden categories keep their transactions but are left
 out of the budget, the charts and the sensors.
 
+## Transfers
+
+**Transfers** calculates what each person should transfer to an account, typically the
+family's joint account, per month:
+
+> to the account = income − one-off costs − allowance
+
+- *Income* is what the person got paid that month.
+- *One-off costs* are what they paid for the joint account with their own money, so they
+  transfer that much less.
+- The *allowance* is what they keep. It applies from the month it is entered until it is
+  changed, so it only needs to be entered when it changes.
+- Pension savings are not part of the calculation.
+
+Add the people under *People* at the bottom of the page. Then pick a month, fill in each
+person's figures and press **Save**. The result updates while you type. Fields accept sums
+as in a spreadsheet, e.g. `=100+250+75` or `50000-8000`, and keep what you typed. A
+negative result means the joint account should pay that person, e.g. during parental
+leave. Below the form the year shows each person's amount per month.
+
+A person can be linked to their own account in the app (*Figures from Privat*). Fields left
+empty then use that account's figures, the same ones its calculated Månadspeng uses:
+Bokföring › Inkomst of the month as income, and Bokföring › Familjeutlägg of the month
+before as one-off costs. What was actually transferred (Bokföring › Familjekonto) is shown
+next to the result, with the difference.
+
+From the command line: `econ -a Familj transfer show --year 2026` and
+`econ -a Familj transfer set Kim 3 --income 40000 --costs 700+500 --allowance 10000`.
+
 ## Sensors
 
 With `publish_sensors` on, the add-on publishes these sensors for every account (`<account>`
@@ -96,6 +125,7 @@ and `<category>` are lower-case, with å/ä/ö written as a/a/o):
 | `sensor.economics_<account>_debt_check` | Number of finished months this year where a *0 monthly* category is not 0 and not acknowledged | `not_zero` (category, month, amount), `acknowledged` |
 | `sensor.economics_<account>_unclassified` | Number of unclassified transactions | |
 | `sensor.economics_<account>_latest_transaction` | Date of the latest transaction | |
+| `sensor.economics_<account>_transfer_<person>` | This month's amount the person transfers (Transfers page); `unknown` before anything is entered | `income`, `one_off_costs`, `allowance`, `previous_month`, `transferred` (with an own account) |
 
 They are refreshed every `sensor_interval` minutes and after each change in the web interface.
 Home Assistant does not keep these states over a restart; the add-on publishes them again

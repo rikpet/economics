@@ -3,7 +3,7 @@ import hashlib
 import re
 from app_types import IssuerClassification, Transaction
 
-# Card purchases in SEB exports end with the purchase date: "MAXI ICA STO/25-12-30".
+# Card purchases in SEB exports end with the purchase date: "TESTBUTIKEN STO/25-12-30".
 _PURCHASE_DATE = re.compile(r"\s*/\s*(?:\d{2}){1,2}-\d{2}-\d{2}\s*$")
 
 SEB_COLUMNS = ("Valutadatum", "Verifikationsnummer", "Text", "Belopp")
@@ -12,7 +12,7 @@ REMEMBER_COLUMNS = ("Datum", "Detaljer", "Plats", "Transaktionsbelopp", "Faktura
 
 def clean_issuer(text: str) -> str:
     """The issuer without a trailing purchase date, so one issuer rule matches every
-    purchase: "MAXI ICA STO/25-12-30" -> "MAXI ICA STO"."""
+    purchase: "TESTBUTIKEN STO/25-12-30" -> "TESTBUTIKEN STO"."""
     text = text.strip()
     return _PURCHASE_DATE.sub("", text).strip() or text
 

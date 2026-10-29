@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% from "_macros.html" import amount %}
+{% block title %}Transfers{% endblock %}
+
+{% macro link_select(selected=None) %}
+<select name="linked_account_id" aria-label="Own account">
+  <option value="">No own account</option>
+  {% for a in link_choices %}<option value="{{ a.id }}" {% if a.id == selected %}selected{% endif %}>Figures from {{ a.name }}</option>{% endfor %}
+</select>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Transfers to {{ account.name }}</h1>
+  <form method="get" class="inline">
+    <input type="hidden" name="month" value="{{ month }}">
+    <label class="visually-hidden" for="year-pick">Year</label>
+    <select name="year" id="year-pick" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
+  </form>
+</div>
+<p class="hint">What each person transfers to {{ account.name }} in a month:
+  <strong>income − one-off costs − allowance</strong>. One-off costs are what they paid for {{ account.name }} with their own money.
+  Pension savings are not included.</p>
+
+{% if people %}
+<section class="card">
+  <div class="month-switch transfer-switch">
+    <a class="button secondary" href="{{ url_for('transfers', account_id=account.id, year=year - 1 if month == 1 else year, month=12 if month == 1 else month - 1) }}" aria-label="One month earlier">‹</a>
+    <form method="get" class="inline">
+      <input type="hidden" name="year" value="{{ year }}">
+      <label class="visually-hidden" for="month-pick">Month</label>
+      <select name="month" id="month-pick" onchange="this.form.submit()">{% for name in month_names %}<option value="{{ loop.index }}" {% if loop.index == month %}selected{% endif %}>{{ name }} {{ year }}</option>{% endfor %}</select>
+    </form>
+    <a class="button secondary" href="{{ url_for('transfers', account_id=account.id, year=year + 1 if month == 12 else year, month=1 if month == 12 else month + 1) }}" aria-label="One month later">›</a>
+  </div>
+
+  <form method="post" action="{{ url_for('save_transfers', account_id=account.id) }}" id="transfer-form">
+    <input type="hidden" name="year" value="{{ year }}">
+    <input type="hidden" name="month" value="{{ month }}">
+    <div class="transfer-people">
+      {% for p in people %}{% set t = by_person[p.id][month - 1] %}{% set e = t.entered %}
+      <fieldset class="transfer-person" data-person="{{ p.id }}">
+        <legend>{{ p.name }}</legend>
+        {% if p.linked_account_id %}<p class="hint">Empty fields use {{ linked_names[p.linked_account_id].name }}’s figures.</p>{% endif %}
+        <label>Income
+          <input type="text" inputmode="decimal" name="income_{{ p.id }}" value="{{ e.income_input or '' if e else '' }}"
+                 {% if t.linked_income is not none %}placeholder="{{ t.linked_income|amount_input }}" data-fallback="{{ t.linked_income }}"{% endif %}>
+          {% if t.linked_income is not none %}<span class="field-hint">Empty: Bokföring › Inkomst, {{ t.linked_income|money }}</span>{% endif %}
+        </label>
+        <label>One-off costs
+          <input type="text" inputmode="decimal" name="costs_{{ p.id }}" value="{{ e.costs_input or '' if e else '' }}"
+                 {% if t.linked_costs is not none %}placeholder="{{ t.linked_costs|amount_input }}" data-fallback="{{ t.linked_costs }}"{% endif %}>
+          <span class="field-hint">{% if t.linked_costs is not none %}Empty: Bokföring › Familjeutlägg in {{ month_names[(month - 2) % 12] }}, {{ t.linked_costs|money }}{% else %}Several amounts can be added up: 100+250+75{% endif %}</span>
+        </label>
+        <label>Allowance
+          <input type="text" inputmode="decimal" name="allowance_{{ p.id }}" value="{{ e.allowance|amount_input if e and e.allowance is not none else '' }}"
+                 placeholder="{{ t.carried_allowance|amount_input }}" data-fallback="{{ t.carried_allowance }}">
+          <span class="field-hint">{% if e and e.allowance is not none %}Applies from this month on{% else %}Empty: the same as the month before, {{ t.carried_allowance|money }}{% endif %}</span>
+        </label>
+        <p class="transfer-result">To {{ account.name }}: <strong data-result>{{ amount(t.to_account) }}</strong></p>
+        {% if t.transferred %}<p class="hint">Transferred according to {{ linked_names[p.linked_account_id].name }} (Bokföring › Familjekonto): {{ t.transferred|money }}{% if (t.transferred - t.to_account)|abs >= 1 %} · difference {{ (t.transferred - t.to_account)|money }}{% endif %}</p>{% endif %}
+      </fieldset>
+      {% endfor %}
+    </div>
+    <div class="save-bar">
+      <span>Together: <strong id="transfer-total">{{ amount(month_total) }}</strong></span>
+      <button type="submit">Save {{ month_names[month - 1] }}</button>
+    </div>
+  </form>
+  <p class="hint">A negative amount means {{ account.name }} should pay that person, e.g. during parental leave.</p>
+</section>
+
+<section class="card">
+  <h2>{{ year }}</h2>
+  <div class="table-wrap">
+  <table class="transfer-year">
+    <thead><tr><th>Month</th>{% for p in people %}<th class="num">{{ p.name }}</th>{% endfor %}{% if people|length > 1 %}<th class="num">Together</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for m in range(1, 13) %}
+      <tr {% if m == month %}class="current"{% endif %}>
+        <th scope="row"><a href="{{ url_for('transfers', account_id=account.id, year=year, month=m) }}" aria-label="{{ month_names[m - 1] }}">{{ months[m - 1] }}</a></th>
+        {% for p in people %}{% set t = by_person[p.id][m - 1] %}<td class="num">{% if t.has_data %}{{ amount(t.to_account) }}{% endif %}</td>{% endfor %}
+        {% if people|length > 1 %}<td class="num"><strong>{% if has_data[m - 1] %}{{ amount(totals[m - 1]) }}{% endif %}</strong></td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><th scope="row">Total</th>
+      {% for p in people %}<td class="num">{{ amount(by_person[p.id]|selectattr('has_data')|sum(attribute='to_account')) }}</td>{% endfor %}
+      {% if people|length > 1 %}<td class="num"><strong>{{ amount(totals|sum) }}</strong></td>{% endif %}
+    </tr></tfoot>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+<details class="card fold" {% if not people %}open{% endif %}>
+  <summary><h2>People</h2></summary>
+  {% if not people %}<p>Add the people who transfer money to {{ account.name }}. Link a person to their own account in the app to fill in their income and outlays from it.</p>{% endif %}
+  {% for p in people %}
+  <form method="post" action="{{ url_for('update_person', account_id=account.id, person_id=p.id, year=year, month=month) }}" class="row-form person-form">
+    <input type="text" name="name" value="{{ p.name }}" aria-label="Name" required>
+    {{ link_select(p.linked_account_id) }}
+    <button type="submit" class="secondary">Save</button>
+    <button type="submit" class="secondary" name="action" value="delete"
+            onclick='return confirm({{ ("Remove " ~ p.name ~ " and everything entered for them?")|tojson }})'>Remove</button>
+  </form>
+  {% endfor %}
+  <form method="post" action="{{ url_for('add_person', account_id=account.id, year=year, month=month) }}" class="row-form person-form">
+    <input type="text" name="name" placeholder="Name" aria-label="Name" required>
+    {{ link_select() }}
+    <button type="submit">Add</button>
+  </form>
+  {% if link_choices %}<p class="hint">With an own account, empty fields use its Bokföring › Inkomst for the month and its Bokföring › Familjeutlägg of the month before, as its calculated Månadspeng does.</p>{% endif %}
+</details>
+
+{% if people %}
+<script>
+(function () {
+  var form = document.getElementById("transfer-form");
+  var money = new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 0 });
+  function parse(text) {  // as transfers.parse_sum
+    text = text.trim().replace(/^=/, "").replace(/−/g, "-").replace(/[\s  ]|kr/g, "").replace(/,/g, ".");
+    if (!text) return null;
+    var terms = text.match(/[+-]?[^+-]+/g);
+    if (!terms || terms.join("") !== text) return NaN;
+    return terms.reduce(function (sum, t) { return sum + Number(t); }, 0);
+  }
+  function value(input) {
+    var v = parse(input.value);
+    if (v === null) v = Number(input.dataset.fallback || 0);
+    input.setCustomValidity(isNaN(v) ? "Not an amount" : "");
+    return v;
+  }
+  function show(el, v) {
+    el.innerHTML = "";
+    var span = document.createElement("span");
+    span.className = "amount" + (v < 0 ? " neg" : v > 0 ? " pos" : "");
+    span.textContent = isNaN(v) ? "?" : money.format(Math.round(v)).replace("-", "−");
+    el.appendChild(span);
+  }
+  function update() {
+    var total = 0;
+    form.querySelectorAll("[data-person]").forEach(function (p) {
+      var id = p.dataset.person;
+      var v = value(form.elements["income_" + id]) - value(form.elements["costs_" + id])
+              - value(form.elements["allowance_" + id]);
+      show(p.querySelector("[data-result]"), v);
+      total += v;
+    });
+    show(document.getElementById("transfer-total"), total);
+  }
+  form.addEventListener("input", update);
+})();
+</script>
+{% endif %}
+{% endblock %}

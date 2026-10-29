@@ -5,7 +5,16 @@ import re
 import sqlite3
 from typing import Iterator, List, Tuple
 
-from app_types import Account, Category, IssuerClassification, ReadTransaction, SplitPart, Transaction
+from app_types import (
+    Account,
+    Category,
+    IssuerClassification,
+    Person,
+    PersonMonth,
+    ReadTransaction,
+    SplitPart,
+    Transaction,
+)
 from category_templates import (
     FIXED_MAINS,
     PRIVATE,
@@ -250,7 +259,7 @@ def _migration_7_zero_check_acks(c: sqlite3.Cursor):
 
 
 def _migration_8_issuer_purchase_dates(c: sqlite3.Cursor):
-    """Card purchases from SEB had the purchase date in the issuer ("MAXI ICA STO/25-12-30"),
+    """Card purchases from SEB had the purchase date in the issuer ("TESTBUTIKEN STO/25-12-30"),
     so an issuer rule only ever matched one day. Drop the date from transactions and rules."""
     date = re.compile(r"\s*/\s*(?:\d{2}){1,2}-\d{2}-\d{2}\s*$")  # as parser.clean_issuer then
 
@@ -278,10 +287,34 @@ def _migration_8_issuer_purchase_dates(c: sqlite3.Cursor):
             c.execute('UPDATE issuer_classifications SET issuer = ? WHERE id = ?', (name, row_id))
 
 
+def _migration_9_transfers(c: sqlite3.Cursor):
+    """The people who share an account (e.g. a family's joint account), and per month their
+    income, one-off costs and allowance, to calculate what each transfers to it."""
+    c.execute('CREATE TABLE people ('
+              'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+              'account_id INTEGER NOT NULL REFERENCES accounts(id), '
+              'name TEXT NOT NULL COLLATE NOCASE, '
+              'linked_account_id INTEGER REFERENCES accounts(id), '
+              'position INTEGER NOT NULL DEFAULT 0, '
+              'UNIQUE(account_id, name))')
+    c.execute('CREATE TABLE person_months ('
+              'account_id INTEGER NOT NULL REFERENCES accounts(id), '
+              'person_id INTEGER NOT NULL REFERENCES people(id), '
+              'year INTEGER NOT NULL, '
+              'month INTEGER NOT NULL, '
+              'income REAL, '
+              'income_input TEXT, '
+              'costs REAL, '
+              'costs_input TEXT, '
+              'allowance REAL, '
+              'PRIMARY KEY(account_id, person_id, year, month))')
+
+
 # Append-only: users have live databases at every version.
 MIGRATIONS = [_migration_1_initial, _migration_2_accounts, _migration_3_hidden_categories,
               _migration_4_split_transactions, _migration_5_expense_roles, _migration_6_budgets,
-              _migration_7_zero_check_acks, _migration_8_issuer_purchase_dates]
+              _migration_7_zero_check_acks, _migration_8_issuer_purchase_dates,
+              _migration_9_transfers]
 
 
 def _apply_category_defaults(conn: sqlite3.Connection, account_id: int,
@@ -441,8 +474,10 @@ def delete_account(database_path: str, account_id: int):
         if conn.execute('SELECT COUNT(*) FROM accounts').fetchone()[0] <= 1:
             raise ValueError('The last account cannot be deleted.')
         for table in ('categories', 'issuer_classifications', 'allowances', 'settings',
-                      'budgets', 'zero_check_acks'):
+                      'budgets', 'zero_check_acks', 'person_months', 'people'):
             conn.execute(f'DELETE FROM {table} WHERE account_id = ?', (account_id,))
+        conn.execute('UPDATE people SET linked_account_id = NULL WHERE linked_account_id = ?',
+                     (account_id,))
         conn.execute('DELETE FROM accounts WHERE id = ?', (account_id,))
 
 
@@ -996,3 +1031,104 @@ def set_allowance(database_path: str, account_id: int, year: int, month: int,
             conn.execute('UPDATE allowances SET sara_allowance = ? '
                          'WHERE account_id = ? AND year = ? AND month = ?',
                          (sara, account_id, year, month))
+
+
+# --------------------------------------------------------------------------------------
+# People and their monthly figures, for the transfer calculation
+# --------------------------------------------------------------------------------------
+
+def _person(row: sqlite3.Row) -> Person:
+    return Person(id=row['id'], name=row['name'], linked_account_id=row['linked_account_id'],
+                  position=row['position'])
+
+
+def get_people(database_path: str, account_id: int) -> list[Person]:
+    with _connect(database_path) as conn:
+        rows = conn.execute('SELECT * FROM people WHERE account_id = ? ORDER BY position, id',
+                            (account_id,)).fetchall()
+        return [_person(r) for r in rows]
+
+
+def get_person(database_path: str, account_id: int, person_id: int) -> Person | None:
+    with _connect(database_path) as conn:
+        row = conn.execute('SELECT * FROM people WHERE account_id = ? AND id = ?',
+                           (account_id, person_id)).fetchone()
+        return _person(row) if row else None
+
+
+def _check_link(conn: sqlite3.Connection, account_id: int, linked_account_id: int | None):
+    if linked_account_id is None:
+        return
+    if linked_account_id == account_id:
+        raise ValueError('A person can not be linked to the account they transfer to.')
+    if conn.execute('SELECT 1 FROM accounts WHERE id = ?', (linked_account_id,)).fetchone() is None:
+        raise ValueError(f'No account with id {linked_account_id}.')
+
+
+def add_person(database_path: str, account_id: int, name: str,
+               linked_account_id: int | None = None) -> int:
+    name = name.strip()
+    if not name:
+        raise ValueError('Enter a name.')
+    with _connect(database_path) as conn:
+        _check_link(conn, account_id, linked_account_id)
+        position = conn.execute('SELECT COALESCE(MAX(position), -1) + 1 FROM people '
+                                'WHERE account_id = ?', (account_id,)).fetchone()[0]
+        try:
+            cursor = conn.execute('INSERT INTO people (account_id, name, linked_account_id, position) '
+                                  'VALUES (?, ?, ?, ?)', (account_id, name, linked_account_id, position))
+        except sqlite3.IntegrityError:
+            raise ValueError(f'{name} is already added.') from None
+        return cursor.lastrowid
+
+
+def update_person(database_path: str, account_id: int, person_id: int, name: str,
+                  linked_account_id: int | None):
+    name = name.strip()
+    if not name:
+        raise ValueError('Enter a name.')
+    with _connect(database_path) as conn:
+        _check_link(conn, account_id, linked_account_id)
+        try:
+            conn.execute('UPDATE people SET name = ?, linked_account_id = ? '
+                         'WHERE account_id = ? AND id = ?',
+                         (name, linked_account_id, account_id, person_id))
+        except sqlite3.IntegrityError:
+            raise ValueError(f'{name} is already added.') from None
+
+
+def delete_person(database_path: str, account_id: int, person_id: int):
+    with _connect(database_path) as conn:
+        conn.execute('DELETE FROM person_months WHERE account_id = ? AND person_id = ?',
+                     (account_id, person_id))
+        conn.execute('DELETE FROM people WHERE account_id = ? AND id = ?', (account_id, person_id))
+
+
+def get_person_months(database_path: str, account_id: int, until_year: int) -> list[PersonMonth]:
+    """Every stored month up to and including until_year, oldest first (earlier years are
+    needed for the allowance, which carries over)."""
+    with _connect(database_path) as conn:
+        rows = conn.execute('SELECT * FROM person_months WHERE account_id = ? AND year <= ? '
+                            'ORDER BY year, month', (account_id, until_year)).fetchall()
+        return [PersonMonth(person_id=r['person_id'], year=r['year'], month=r['month'],
+                            income=r['income'], income_input=r['income_input'],
+                            costs=r['costs'], costs_input=r['costs_input'],
+                            allowance=r['allowance']) for r in rows]
+
+
+def set_person_month(database_path: str, account_id: int, value: PersonMonth):
+    """Store a person's figures for a month. A month with nothing entered is removed."""
+    with _connect(database_path) as conn:
+        if conn.execute('SELECT 1 FROM people WHERE account_id = ? AND id = ?',
+                        (account_id, value.person_id)).fetchone() is None:
+            raise ValueError(f'No person with id {value.person_id}.')
+        key = (account_id, value.person_id, value.year, value.month)
+        if value.income is None and value.costs is None and value.allowance is None:
+            conn.execute('DELETE FROM person_months WHERE account_id = ? AND person_id = ? '
+                         'AND year = ? AND month = ?', key)
+            return
+        conn.execute('INSERT OR REPLACE INTO person_months (account_id, person_id, year, month, '
+                     'income, income_input, costs, costs_input, allowance) '
+                     'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                     (*key, value.income, value.income_input, value.costs, value.costs_input,
+                      value.allowance))

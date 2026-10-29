@@ -1,6 +1,6 @@
 [project]
 name = "economics"
-version = "2.10.0"
+version = "2.11.0"
 description = "Handling my private and family economy"
 dependencies = [
     "pandas",
