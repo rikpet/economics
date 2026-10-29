@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.12.0
+
+- The budget shows the **average per month** instead of the year's total in the last
+  column, on the phone too. The average is over the months that are over (Jan–Sep at the
+  end of October), so the running month doesn't pull it down; in January it is the running
+  month. Hover the column header to see which months are included.
+- With a budget, the average turns red when it is over the monthly budget (or under it for
+  income and Balance).
+
 ## 2.11.1
 
 - Fixed the Balance row for the private account when Bokföring is hidden from the budget:

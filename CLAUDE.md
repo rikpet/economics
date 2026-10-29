@@ -137,7 +137,9 @@ along (`UPDATE OR REPLACE`). Defaults for new categories come from names in `cat
 **Budgets** (migration 6, table `budgets`): an optional monthly amount per main category
 and account; `rename_main_category()` moves it along. `budget.budget_checks()` decides what
 is red: expense groups over budget in any month up to now, income groups (every sub of type
-Income) under budget in finished months only; totals against budget × months counted.
+Income) under budget in finished months only. The last column is the average per month
+over `average_months()` (the finished months; the running month in January), coloured by
+comparing it with the monthly budget (`BudgetCheck.average_red`).
 Without a budget nothing is coloured — amounts stay in the normal text colour.
 
 **Transfers** (migration 9, tables `people` and `person_months`): the people who pay into

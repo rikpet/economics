@@ -44,6 +44,8 @@ Card purchases in SEB exports end with the purchase date (`TESTBUTIKEN STO/25-12
 date is dropped, so the issuer is `TESTBUTIKEN STO` and one issuer rule covers every purchase
 there.
 3. **Budget**: amounts per month and category. Click an amount to see its transactions.
+   The last column is the **average per month** over the months of the year that are over
+   (in January, the running month), so a half-finished month doesn't pull it down.
 4. **Charts**: income and expenses per month, the spread over categories, and one category
    compared with the year before. Click a category bar to look closer at it. Above the
    charts you can pick months and categories; clicking a category in a chart legend hides
@@ -75,7 +77,7 @@ acknowledged ones are listed below the warnings, each with **Undo**.
 **Budgets** are optional: give a main category a monthly budget under **Categories**
 (*Budget/month*). The budget page then shows it in a *Budget* column and colours the
 amounts red when an expense group is over budget, or an income group under it in a finished
-month. The total is compared with the budget for the months so far. Groups without a budget
+month. The *Average* column is compared with the budget too. Groups without a budget
 stay black.
 
 Under **Categories** you can hide categories you don't want in the budget, such as

@@ -68,7 +68,7 @@
 <div class="table-wrap">
 <table class="budget" id="budget-table" data-month="{{ month_shown }}" data-month2="{{ month_shown - 1 }}">
   <thead>
-    <tr><th>Category</th>{% if budgets %}<th class="num" title="Monthly budget">Budget</th>{% endif %}{% for m in months %}<th class="num m m{{ loop.index }}">{{ m }}</th>{% endfor %}<th class="num">Total</th></tr>
+    <tr><th>Category</th>{% if budgets %}<th class="num" title="Monthly budget">Budget</th>{% endif %}{% for m in months %}<th class="num m m{{ loop.index }}">{{ m }}</th>{% endfor %}<th class="num avg" title="{% if avg_months %}Average per month, {{ avg_label }}{% else %}No month of {{ year }} has started{% endif %}">Average</th></tr>
   </thead>
   <tbody>
   {% for r in rows %}
@@ -83,7 +83,8 @@
         {% if v %}<a href="{{ url_for('transactions', account_id=account.id, year=year, month=loop.index, category=r.main_category, sub=r.sub_category or '') }}">{{ v|money }}</a>{% else %}<span class="muted">–</span>{% endif %}
       </td>
       {% endfor %}
-      <td class="num total{% if check and check.total_red %} over{% endif %}"{% if check and check.total_red %} title="Budget so far: {{ check.total_budget|money }} kr"{% endif %}>{{ r.total|money }}</td>
+      {% set avg = r.average(avg_months) %}
+      <td class="num total{% if check and check.average_red %} over{% endif %}"{% if check and check.average_red %} title="On average {{ check.describe(0, avg) }}"{% endif %}>{% if avg is not none and avg|round != 0 %}{{ avg|money }}{% else %}<span class="muted">–</span>{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>
@@ -97,15 +98,17 @@
       {% set is_over = check and loop.index in check.red_months %}
       <td class="num m m{{ loop.index }}{% if is_over %} over{% endif %}"{% if is_over %} title="{{ check.describe(loop.index, v) }}"{% endif %}>{% if v %}{{ v|money }}{% else %}<span class="muted">–</span>{% endif %}</td>
       {% endfor %}
-      <td class="num total{% if check and check.total_red %} over{% endif %}"{% if check and check.total_red %} title="Budget so far: {{ check.total_budget|money }} kr"{% endif %}>{{ s.total|money }}</td>
+      {% set avg = s.average(avg_months) %}
+      <td class="num total{% if check and check.average_red %} over{% endif %}"{% if check and check.average_red %} title="On average {{ check.describe(0, avg) }}"{% endif %}>{% if avg is not none and avg|round != 0 %}{{ avg|money }}{% else %}<span class="muted">–</span>{% endif %}</td>
     </tr>
   {% endfor %}
   </tfoot>
 </table>
 </div>
 <p class="hint">Expense categories are shown as positive costs. Click an amount to see its transactions.
+<br><strong>Average</strong>: per month over {% if avg_months %}{{ avg_label }} {{ year }}{% if avg_months == completed_months_count %}, the months that are over{% else %} so far{% endif %}{% else %}the months that are over (none yet){% endif %}.
 {% for s in summary %}<br><strong>{{ s.label }}</strong>: {{ s.hint }}{% endfor %}
-{% if budgets %}<br>Red: an expense group (or Expenses) over its monthly budget, or an income group (or Balance) under it. The totals' budgets add up the groups' budgets; Balance has one when an income group has a budget. Budgets are set under <a href="{{ url_for('categories', account_id=account.id) }}">Categories</a>.{% endif %}
+{% if budgets %}<br>Red: an expense group (or Expenses) over its monthly budget, or an income group (or Balance) under it — in a month or on average. The totals' budgets add up the groups' budgets; Balance has one when an income group has a budget. Budgets are set under <a href="{{ url_for('categories', account_id=account.id) }}">Categories</a>.{% endif %}
 <br>Which categories are expenses, fixed costs or transfers, and which should be 0 every month, is set under <a href="{{ url_for('categories', account_id=account.id) }}">Categories</a>.
 {% if hidden_count %}{{ hidden_count }} hidden {{ 'category is' if hidden_count == 1 else 'categories are' }} not shown (<a href="{{ url_for('categories', account_id=account.id) }}">manage</a>).{% endif %}
 See also the <a href="{{ url_for('charts', account_id=account.id, year=year) }}">charts</a>.

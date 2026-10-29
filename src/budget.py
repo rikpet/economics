@@ -49,6 +49,10 @@ class BudgetRow:
     def total(self) -> float:
         return sum(self.values)
 
+    def average(self, months: int) -> float | None:
+        """Average per month over the first `months` months (see average_months)."""
+        return sum(self.values[:months]) / months if months else None
+
     @property
     def is_sub(self) -> bool:
         return self.sub_category is not None
@@ -168,6 +172,14 @@ def completed_months(year: int, now: datetime | None = None) -> int:
     return now.month - 1 if year == now.year else 0
 
 
+def average_months(year: int, now: datetime | None = None) -> int:
+    """How many months the budget's averages are taken over: the finished months of the
+    year, or in January the running month, since none is finished yet."""
+    now = now or datetime.now()
+    done = completed_months(year, now)
+    return 1 if done == 0 and year == now.year else done
+
+
 @dataclass
 class SummaryRow:
     label: str
@@ -180,6 +192,9 @@ class SummaryRow:
     @property
     def total(self) -> float:
         return sum(self.values)
+
+    def average(self, months: int) -> float | None:
+        return sum(self.values[:months]) / months if months else None
 
 
 def summary_rows(balances: dict[int, Balance], categories: list[Category],
@@ -306,12 +321,11 @@ def split_acknowledged(flags: list[ZeroCheckFlag], acks: dict[tuple[str, str, in
 
 @dataclass
 class BudgetCheck:
-    """How a main category with a monthly budget did: the months (and total) to show red."""
+    """How a main category with a monthly budget did: the months (and average) to show red."""
     budget: float
     is_income: bool
     red_months: set[int]
-    total_red: bool
-    total_budget: float  # the budget for the months counted in the total
+    average_red: bool  # the average per month (see average_months) is on the wrong side
 
     def describe(self, month: int, value: float) -> str:
         diff = abs(value - self.budget)
@@ -322,17 +336,20 @@ class BudgetCheck:
 
 def _compare(values: list[float], months: list[int], budget: float, is_income: bool,
              year: int, now: datetime) -> BudgetCheck:
-    """Red months and total for values against a monthly budget (see budget_checks)."""
+    """Red months and average for values against a monthly budget (see budget_checks)."""
     through = 12 if year < now.year else (now.month if year == now.year else 0)
     done = completed_months(year, now)
     counted = [(m, v) for m, v in zip(months, values) if m <= (done if is_income else through)]
+    n = average_months(year, now)
+    averaged = [v for m, v in zip(months, values) if m <= n]
+    average = sum(averaged) / n if n else None
     if is_income:
         red = {m for m, v in counted if v < budget - 0.005}
-        total_red = bool(counted) and sum(v for _, v in counted) < budget * len(counted) - 0.005
+        average_red = average is not None and done > 0 and average < budget - 0.005
     else:
         red = {m for m, v in counted if v > budget + 0.005}
-        total_red = sum(v for _, v in counted) > budget * len(counted) + 0.005
-    return BudgetCheck(budget, is_income, red, total_red, budget * len(counted))
+        average_red = average is not None and average > budget + 0.005
+    return BudgetCheck(budget, is_income, red, average_red)
 
 
 def summary_checks(summary: list[SummaryRow], year: int, months: list[int],
@@ -350,7 +367,7 @@ def budget_checks(rows: list[BudgetRow], budgets: dict[str, float], categories: 
 
     Expense groups are red in a month they go over the budget, the current month included.
     Income groups (all sub-categories of type Income) are red in a finished month they stay
-    under it. The total is compared with the budget times the months counted so far.
+    under it. The average per month (average_months) is compared with the budget too.
     Categories without a budget are not checked.
     """
     now = now or datetime.now()

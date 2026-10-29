@@ -27,6 +27,7 @@ import operations
 from version import __version__
 from app_types import Account, Category, IssuerClassification, PersonMonth, SplitPart
 from budget import (
+    average_months,
     budget_checks,
     budget_table,
     cash_flow,
@@ -260,6 +261,8 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
             "budget.html", rows=rows, year=year, years=years, show_subs=show_subs,
             hidden_count=len(hidden), summary=summary, summary_checks=totals_checks, flags=flags,
             budgets=budgets, checks=checks, month_shown=month_shown, acknowledged=acknowledged,
+            avg_months=average_months(year), completed_months_count=completed_months(year),
+            avg_label=period_label(list(range(1, average_months(year) + 1))),
             flagged={(f.main_category, f.sub_category, f.month) for f in flags},
             flagged_main={(f.main_category, f.month) for f in flags},
             unclassified=db.count_unclassified_transactions(dbp(), account_id),

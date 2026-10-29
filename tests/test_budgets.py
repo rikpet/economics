@@ -7,7 +7,7 @@ from click.testing import CliRunner
 import database as db
 from app import cli
 from app_types import Transaction
-from budget import budget_checks, budget_table, monthly_balances
+from budget import average_months, budget_checks, budget_table, monthly_balances
 from ha_sensors import account_states
 from webapp import create_app
 
@@ -61,13 +61,19 @@ def test_expense_budget(path):
     check = checks_for(path, 2025, datetime(2025, 4, 15))['mat']
     assert check.red_months == {2, 4}
     assert not check.is_income
-    assert check.total_red  # 12 100 spent against 4 x 3 000
-    assert check.total_budget == 12000
+    assert not check.average_red  # 2 900 a month over Jan–Mar, the finished months
     assert check.describe(2, 3200) == '200 kr over the budget of 3 000 kr'
 
-    # Within budget over the year so far: the total stays black.
-    add(path, '2025-04-11', 3000, 'mat', 'butik')  # a refund
-    assert not checks_for(path, 2025, datetime(2025, 4, 15))['mat'].total_red
+    # Over budget on average: the average turns red.
+    add(path, '2025-01-20', -600, 'mat', 'butik')
+    assert checks_for(path, 2025, datetime(2025, 4, 15))['mat'].average_red  # 3 100 a month
+
+
+def test_average_months():
+    assert average_months(2025, datetime(2025, 4, 15)) == 3   # Jan–Mar are over
+    assert average_months(2025, datetime(2025, 1, 15)) == 1   # January: the running month
+    assert average_months(2024, datetime(2025, 1, 15)) == 12
+    assert average_months(2026, datetime(2025, 1, 15)) == 0   # nothing has started
 
 
 def test_income_budget(path):
@@ -77,7 +83,7 @@ def test_income_budget(path):
     # March is running and still empty: not judged yet.
     check = checks_for(path, 2025, datetime(2025, 3, 10))['inkomst']
     assert check.is_income and check.red_months == {2}
-    assert not check.total_red  # 2 000 against 2 x 1 000
+    assert not check.average_red  # 1 000 a month over Jan–Feb
 
 
 def test_without_budgets_nothing_is_red(path):
@@ -107,7 +113,9 @@ def test_budget_page(client, path):
     mat = re.search(r'<th scope="row">Mat</th>(.*?)</tr>', html, re.S).group(1)
     red = re.findall(r'<td class="num m m\d+ over" title="([^"]+)">', mat)
     assert red == ['200 kr over the budget of 3 000 kr']
-    assert 'class="num total over"' not in mat  # 4 200 against 12 x 3 000
+    assert 'class="num total over"' not in mat  # 350 a month on average
+    assert '<td class="num total">350</td>' in mat  # 4 200 over the 12 months of 2024
+    assert 'title="Average per month, Jan–Dec">Average</th>' in html
 
     html = client.get('/1/categories').get_data(as_text=True)
     assert 'value="3000"' in html
