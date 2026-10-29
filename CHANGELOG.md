@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.9.0
+
+- New **Balance** row under the budget: income minus expenses for each month and the year.
+  Negative when more went out than came in.
+- The total rows now have budgets too: Expenses shows the expense groups' budgets added up,
+  Expenses excl. fixed costs the same without the fixed groups, and Balance the income
+  budget minus the expense budgets (when an income group has a budget). They turn red like
+  the groups: Expenses when over, Balance when under in a finished month.
+- In the private account the calculated Inkomst › Månadspeng is no longer counted as income
+  on top of Bokföring › Inkomst it comes from, so the income in the charts is no longer
+  counted twice.
+- Home Assistant: a new `balance` sensor per account (this month, previous month, year to
+  date).
+
 ## 2.8.1
 
 - On a phone the budget shows two months side by side (the chosen month and the one

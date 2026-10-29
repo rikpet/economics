@@ -118,9 +118,12 @@ UI amounts are entered in the original's direction (positive numbers for an expe
 **Expense roles and the debt check** (migration 5): `categories.expense_role` is
 `variable`, `fixed` or `transfer`, meaningful for expense categories (`invert_sign`); the UI
 shows it with `invert_sign` as one *Type* (`Category.kind`, `category_templates.KINDS`).
-`budget.summary_rows()` builds the "Expenses" / "Expenses excl. fixed costs" rows (not
-hidden, `counts_as_expense`, plus unclassified), and `cash_flow()` for the charts uses the
-same rule. `categories.zero_check` marks categories that must add up to 0 each month;
+`budget.summary_rows()` builds the "Expenses" / "Expenses excl. fixed costs" / "Balance"
+rows (expenses: not hidden, `counts_as_expense`, plus unclassified; income:
+`counts_as_income()`, which leaves out the derived `inkomst/månadspeng` so salary isn't
+counted twice), and `cash_flow()` for the charts uses the same rules. With the budgets
+passed in, the rows carry summed budgets (Balance only when an income group has one) and
+`summary_checks()` colours them like `budget_checks()`; both share `_compare()`. `categories.zero_check` marks categories that must add up to 0 each month;
 `zero_check_flags()` checks only finished months (`completed_months()`), hidden ones
 included. Warnings can be acknowledged (migration 7, table `zero_check_acks`, keyed by
 account/main/sub/year/month with the amount at the time); `split_acknowledged()` treats an

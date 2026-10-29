@@ -6,6 +6,8 @@ import database as db
 from app_types import Account, Category
 from balance import Balance
 
+DERIVED_ALLOWANCE = ("inkomst", "månadspeng")  # calculated, see Balance.derive_allowance
+
 
 def monthly_balances(database_path: str, account: Account, year: int,
                      months: list[int] | None = None) -> dict[int, Balance]:
@@ -126,7 +128,7 @@ def cash_flow(balances: dict[int, Balance], categories: list[Category],
             if c.counts_as_expense:  # already a positive cost
                 expenses[i] += value
                 by_main.setdefault(main, [0.0] * len(balances))[i] += value
-            elif not c.invert_sign:
+            elif counts_as_income(b, c):
                 income[i] += value
             # Transfers (e.g. savings) are neither.
 
@@ -136,6 +138,15 @@ def cash_flow(balances: dict[int, Balance], categories: list[Category],
         by_main["uncategorized"] = uncategorized
         expenses = [e + u for e, u in zip(expenses, uncategorized)]
     return CashFlow(income, expenses, by_main)
+
+
+def counts_as_income(balance: Balance, c: Category) -> bool:
+    """Income categories, except the derived inkomst/månadspeng: it is calculated from
+    bokföring/inkomst, which is already counted, so it would count the same money twice."""
+    if c.invert_sign or c.hidden:
+        return False
+    return not (balance.derive_allowance
+                and (c.main_category.lower(), c.sub_category.lower()) == DERIVED_ALLOWANCE)
 
 
 def completed_months(year: int, now: datetime | None = None) -> int:
@@ -152,43 +163,80 @@ class SummaryRow:
     key: str
     values: list[float]
     hint: str = ""
+    budget: float | None = None  # monthly budget for the row, when the budgets give one
+    is_income: bool = False      # compared like income: red when under the budget
 
     @property
     def total(self) -> float:
         return sum(self.values)
 
 
-def summary_rows(balances: dict[int, Balance], categories: list[Category]) -> list[SummaryRow]:
-    """Totals under the budget table: all expenses, and expenses without fixed costs.
+def summary_rows(balances: dict[int, Balance], categories: list[Category],
+                 budgets: dict[str, float] | None = None) -> list[SummaryRow]:
+    """Totals under the budget table: expenses, expenses without fixed costs, and the
+    balance (income minus expenses).
 
     Expenses are the categories of type Expense or Fixed expense that are not hidden, plus
-    unclassified transactions (mostly purchases). Income and transfers such as savings are
-    not expenses.
+    unclassified transactions (mostly purchases). Income is the categories of type Income,
+    without the derived allowance. Transfers such as savings are neither.
+
+    With `budgets`, each row gets the matching monthly budget: the expense groups' budgets
+    added up (without the fixed groups for the second row), and income budgets minus
+    expense budgets for the balance when there is an income budget.
     """
+    budgets = budgets or {}
     expenses = [0.0] * len(balances)
     fixed = [0.0] * len(balances)
+    income = [0.0] * len(balances)
     for c in categories:
-        if c.hidden or not c.counts_as_expense:
-            continue
         main, sub = c.main_category.lower(), c.sub_category.lower()
         for i, b in enumerate(balances.values()):
-            value = b.get_sub_category(main, sub)
-            expenses[i] += value
-            if c.expense_role == "fixed":
-                fixed[i] += value
+            if c.counts_as_expense and not c.hidden:
+                value = b.get_sub_category(main, sub)
+                expenses[i] += value
+                if c.expense_role == "fixed":
+                    fixed[i] += value
+            elif counts_as_income(b, c):
+                b.get(main)  # derives inkomst/månadspeng before it is read
+                income[i] += b.get_sub_category(main, sub)
     for i, b in enumerate(balances.values()):
         expenses[i] -= b.get("uncategorized")
     fixed_names = sorted({c.main_category.capitalize() for c in categories
                           if c.counts_as_expense and c.expense_role == "fixed" and not c.hidden})
+
+    # Budgets per group: a group is an expense group if it has a counted expense category,
+    # an income group if all its categories are income; fixed if all its expenses are fixed.
+    visible = [c for c in categories if not c.hidden]
+    expense_mains = {c.main_category for c in visible if c.counts_as_expense}
+    income_mains = ({c.main_category for c in visible if not c.invert_sign}
+                    - {c.main_category for c in categories if c.invert_sign})
+    fixed_mains = {m for m in expense_mains
+                   if all(c.expense_role == "fixed" for c in visible
+                          if c.main_category == m and c.counts_as_expense)}
+    expense_budgets = {m: budgets[m] for m in expense_mains if m in budgets}
+    income_budget = sum(budgets[m] for m in income_mains if m in budgets)
+    expense_budget = sum(expense_budgets.values()) if expense_budgets else None
+    variable_budget = (sum(v for m, v in expense_budgets.items() if m not in fixed_mains)
+                       if expense_budgets else None)
+    balance_budget = (income_budget - (expense_budget or 0)
+                      if any(m in budgets for m in income_mains) else None)
+
     return [
         SummaryRow("Expenses", "expenses", expenses,
                    "Every expense category, plus unclassified transactions. Not income or "
-                   "transfers such as savings."),
+                   "transfers such as savings.", budget=expense_budget),
         SummaryRow("Expenses excl. fixed costs", "variable",
                    [e - f for e, f in zip(expenses, fixed)],
                    "Expenses without the fixed monthly costs"
                    + (f" ({', '.join(fixed_names)})." if fixed_names else
-                      ". No category is marked as a fixed expense yet.")),
+                      ". No category is marked as a fixed expense yet."),
+                   budget=variable_budget),
+        SummaryRow("Balance", "balance", [i - e for i, e in zip(income, expenses)],
+                   "Income minus expenses. Negative when more went out than came in."
+                   + (" The derived Inkomst \u203a Månadspeng is not counted as income, "
+                      "since it comes from Bokföring \u203a Inkomst."
+                      if any(b.derive_allowance for b in balances.values()) else ""),
+                   budget=balance_budget, is_income=True),
     ]
 
 
@@ -254,6 +302,29 @@ class BudgetCheck:
         return f"{diff:,.0f} kr over the budget of {self.budget:,.0f} kr".replace(",", " ")
 
 
+def _compare(values: list[float], months: list[int], budget: float, is_income: bool,
+             year: int, now: datetime) -> BudgetCheck:
+    """Red months and total for values against a monthly budget (see budget_checks)."""
+    through = 12 if year < now.year else (now.month if year == now.year else 0)
+    done = completed_months(year, now)
+    counted = [(m, v) for m, v in zip(months, values) if m <= (done if is_income else through)]
+    if is_income:
+        red = {m for m, v in counted if v < budget - 0.005}
+        total_red = bool(counted) and sum(v for _, v in counted) < budget * len(counted) - 0.005
+    else:
+        red = {m for m, v in counted if v > budget + 0.005}
+        total_red = sum(v for _, v in counted) > budget * len(counted) + 0.005
+    return BudgetCheck(budget, is_income, red, total_red, budget * len(counted))
+
+
+def summary_checks(summary: list[SummaryRow], year: int, months: list[int],
+                   now: datetime | None = None) -> dict[str, BudgetCheck]:
+    """Budget checks for the summary rows that have a budget."""
+    now = now or datetime.now()
+    return {s.key: _compare(s.values, months, s.budget, s.is_income, year, now)
+            for s in summary if s.budget is not None}
+
+
 def budget_checks(rows: list[BudgetRow], budgets: dict[str, float], categories: list[Category],
                   year: int, months: list[int], now: datetime | None = None
                   ) -> dict[str, BudgetCheck]:
@@ -265,24 +336,8 @@ def budget_checks(rows: list[BudgetRow], budgets: dict[str, float], categories: 
     Categories without a budget are not checked.
     """
     now = now or datetime.now()
-    through = 12 if year < now.year else (now.month if year == now.year else 0)
-    done = completed_months(year, now)
     income_mains = {c.main_category for c in categories if not c.invert_sign} - {
         c.main_category for c in categories if c.invert_sign}
-
-    checks: dict[str, BudgetCheck] = {}
-    for r in rows:
-        if r.is_sub or r.main_category not in budgets:
-            continue
-        budget = budgets[r.main_category]
-        is_income = r.main_category in income_mains
-        counted = [(m, v) for m, v in zip(months, r.values) if m <= (done if is_income else through)]
-        if is_income:
-            red = {m for m, v in counted if v < budget - 0.005}
-            total_red = bool(counted) and sum(v for _, v in counted) < budget * len(counted) - 0.005
-        else:
-            red = {m for m, v in counted if v > budget + 0.005}
-            total_red = sum(v for _, v in counted) > budget * len(counted) + 0.005
-        checks[r.main_category] = BudgetCheck(budget, is_income, red, total_red,
-                                              budget * len(counted))
-    return checks
+    return {r.main_category: _compare(r.values, months, budgets[r.main_category],
+                                      r.main_category in income_mains, year, now)
+            for r in rows if not r.is_sub and r.main_category in budgets}

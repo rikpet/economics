@@ -89,11 +89,15 @@
   </tbody>
   <tfoot>
   {% for s in summary %}
-    <tr class="summary">
+    {% set check = summary_checks.get(s.key) %}
+    <tr class="summary summary-{{ s.key }}">
       <th scope="row" title="{{ s.hint }}">{{ s.label }}</th>
-      {% if budgets %}<td></td>{% endif %}
-      {% for v in s.values %}<td class="num m m{{ loop.index }}">{% if v %}{{ v|money }}{% else %}<span class="muted">–</span>{% endif %}</td>{% endfor %}
-      <td class="num total">{{ s.total|money }}</td>
+      {% if budgets %}<td class="num budget-col">{% if s.budget is not none %}{{ s.budget|money }}{% endif %}</td>{% endif %}
+      {% for v in s.values %}
+      {% set is_over = check and loop.index in check.red_months %}
+      <td class="num m m{{ loop.index }}{% if is_over %} over{% endif %}"{% if is_over %} title="{{ check.describe(loop.index, v) }}"{% endif %}>{% if v %}{{ v|money }}{% else %}<span class="muted">–</span>{% endif %}</td>
+      {% endfor %}
+      <td class="num total{% if check and check.total_red %} over{% endif %}"{% if check and check.total_red %} title="Budget so far: {{ check.total_budget|money }} kr"{% endif %}>{{ s.total|money }}</td>
     </tr>
   {% endfor %}
   </tfoot>
@@ -101,7 +105,7 @@
 </div>
 <p class="hint">Expense categories are shown as positive costs. Click an amount to see its transactions.
 {% for s in summary %}<br><strong>{{ s.label }}</strong>: {{ s.hint }}{% endfor %}
-{% if budgets %}<br>Red: an expense group over its monthly budget, or an income group under it. Budgets are set under <a href="{{ url_for('categories', account_id=account.id) }}">Categories</a>.{% endif %}
+{% if budgets %}<br>Red: an expense group (or Expenses) over its monthly budget, or an income group (or Balance) under it. The totals' budgets add up the groups' budgets; Balance has one when an income group has a budget. Budgets are set under <a href="{{ url_for('categories', account_id=account.id) }}">Categories</a>.{% endif %}
 <br>Which categories are expenses, fixed costs or transfers, and which should be 0 every month, is set under <a href="{{ url_for('categories', account_id=account.id) }}">Categories</a>.
 {% if hidden_count %}{{ hidden_count }} hidden {{ 'category is' if hidden_count == 1 else 'categories are' }} not shown (<a href="{{ url_for('categories', account_id=account.id) }}">manage</a>).{% endif %}
 See also the <a href="{{ url_for('charts', account_id=account.id, year=year) }}">charts</a>.

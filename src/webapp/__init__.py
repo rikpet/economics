@@ -34,6 +34,7 @@ from budget import (
     hidden_categories,
     monthly_balances,
     split_acknowledged,
+    summary_checks,
     summary_rows,
     zero_check_flags,
 )
@@ -237,6 +238,8 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         # Phones show this month and the one before it; January pairs with February.
         month_shown = max(month_shown, 2)
         checks = budget_checks(rows, budgets, categories, year, list(balances))
+        summary = summary_rows(balances, categories, budgets)
+        totals_checks = summary_checks(summary, year, list(balances))
 
         @after_this_request
         def remember(response):
@@ -246,7 +249,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
 
         return render_template(
             "budget.html", rows=rows, year=year, years=years, show_subs=show_subs,
-            hidden_count=len(hidden), summary=summary_rows(balances, categories), flags=flags,
+            hidden_count=len(hidden), summary=summary, summary_checks=totals_checks, flags=flags,
             budgets=budgets, checks=checks, month_shown=month_shown, acknowledged=acknowledged,
             flagged={(f.main_category, f.sub_category, f.month) for f in flags},
             flagged_main={(f.main_category, f.month) for f in flags},

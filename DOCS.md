@@ -48,7 +48,9 @@ other way, e.g. a return) and pick a category for each; they must add up to the 
 amount. The parts then replace the original everywhere. **Change the split** on any part,
 or **Undo split**, brings you back.
 
-The budget ends with **Expenses** and **Expenses excl. fixed costs**. What counts is set
+The budget ends with **Expenses**, **Expenses excl. fixed costs** and **Balance** (income
+minus expenses). With budgets set, these rows get one too — the groups' budgets added up,
+and for Balance the income budget minus the expense budgets. What counts is set
 per category under **Categories** with *Type*:
 
 - *Expense* and *Fixed expense* count as expenses; fixed ones (from the start Hushåll) are
@@ -83,6 +85,7 @@ and `<category>` are lower-case, with å/ä/ö written as a/a/o):
 | --- | --- | --- |
 | `sensor.economics_<account>_<category>` | This month's amount for the main category (expenses as positive cost). Not published for hidden categories. | `previous_month`, `year_to_date`, `sub_categories`, `month` |
 | `sensor.economics_<account>_expenses` | This month's expenses, as the budget's Expenses row | `excl_fixed_costs`, `previous_month`, `previous_month_excl_fixed_costs`, `year_to_date` |
+| `sensor.economics_<account>_balance` | This month's income minus expenses | `previous_month`, `year_to_date` |
 | `sensor.economics_<account>_debt_check` | Number of finished months this year where a *0 monthly* category is not 0 and not acknowledged | `not_zero` (category, month, amount), `acknowledged` |
 | `sensor.economics_<account>_unclassified` | Number of unclassified transactions | |
 | `sensor.economics_<account>_latest_transaction` | Date of the latest transaction | |

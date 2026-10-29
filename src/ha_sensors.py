@@ -83,13 +83,13 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
             if not is_income:  # income can't be judged before the month is over
                 attributes["over_budget"] = value > budget + 0.005
 
-    # Expense totals, as the summary rows under the budget table.
-    def totals(balances: dict) -> tuple[list[float], list[float]]:
-        expenses, variable = summary_rows(balances, categories)
-        return expenses.values, variable.values
+    # Expense totals and balance, as the summary rows under the budget table.
+    def totals(balances: dict) -> tuple[list[float], list[float], list[float]]:
+        rows = {s.key: s.values for s in summary_rows(balances, categories)}
+        return rows["expenses"], rows["variable"], rows["balance"]
 
-    year_expenses, year_variable = totals(this_year)
-    prev_expenses, prev_variable = totals({0: previous})
+    year_expenses, year_variable, year_balance = totals(this_year)
+    prev_expenses, prev_variable, prev_balance = totals({0: previous})
     states[f"{prefix}_expenses"] = {
         "state": round(year_expenses[now.month - 1], 2),
         "attributes": {
@@ -104,6 +104,20 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
             "previous_month": round(prev_expenses[0], 2),
             "previous_month_excl_fixed_costs": round(prev_variable[0], 2),
             "year_to_date": round(sum(year_expenses[:now.month]), 2),
+        },
+    }
+    states[f"{prefix}_balance"] = {
+        "state": round(year_balance[now.month - 1], 2),
+        "attributes": {
+            "friendly_name": f"{account.name} balance",
+            "unit_of_measurement": currency,
+            "device_class": "monetary",
+            "state_class": "total",
+            "icon": "mdi:scale-balance",
+            "account": account.name,
+            "month": now.strftime("%Y-%m"),
+            "previous_month": round(prev_balance[0], 2),
+            "year_to_date": round(sum(year_balance[:now.month]), 2),
         },
     }
 

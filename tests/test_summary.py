@@ -77,7 +77,7 @@ def test_summary_rows(path):
 
     balances = monthly_balances(path, db.get_account(path, 1), 2025)
     categories = db.get_categories(path, 1)
-    expenses, variable = summary_rows(balances, categories)
+    expenses, variable, balance = summary_rows(balances, categories)
     assert expenses.values[2] == 500 + 1000 + 40
     assert variable.values[2] == 500 + 40
     assert 'Hushåll' in variable.hint

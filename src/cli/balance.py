@@ -10,6 +10,7 @@ from budget import (
     hidden_categories,
     monthly_balances,
     split_acknowledged,
+    summary_checks,
     summary_rows,
     zero_check_flags,
 )
@@ -59,8 +60,13 @@ def balance(app: AppContext, show_sub_category, year, month, category: tuple[str
     if not category:
         blank = [''] if budgets else []
         table_data.append([''] * (len(balances) + 1 + len(blank)))
-        table_data += [[s.label] + blank + [str(int(v)) for v in s.values]
-                       for s in summary_rows(balances, categories)]
+        summary = summary_rows(balances, categories, budgets)
+        totals_checks = summary_checks(summary, year, list(balances))
+        for s in summary:
+            check = totals_checks.get(s.key)
+            budget = [str(int(s.budget)) if s.budget is not None else ''] if budgets else []
+            table_data.append([s.label] + budget + [cell(v, bool(check) and m in check.red_months)
+                                                    for m, v in zip(balances, s.values)])
 
     click.echo(f'BUDGET SUMMARY ({app.account.name}):\n')
     click.echo(generate_table(
