@@ -7,6 +7,7 @@ from app_types import Account, Category
 from balance import Balance
 
 DERIVED_ALLOWANCE = ("inkomst", "månadspeng")  # calculated, see Balance.derive_allowance
+ALLOWANCE_SOURCE = ("bokföring", "inkomst")      # the salary it is calculated from
 
 
 def monthly_balances(database_path: str, account: Account, year: int,
@@ -128,7 +129,7 @@ def cash_flow(balances: dict[int, Balance], categories: list[Category],
             if c.counts_as_expense:  # already a positive cost
                 expenses[i] += value
                 by_main.setdefault(main, [0.0] * len(balances))[i] += value
-            elif counts_as_income(b, c):
+            elif counts_as_income(b, c, categories):
                 income[i] += value
             # Transfers (e.g. savings) are neither.
 
@@ -140,13 +141,23 @@ def cash_flow(balances: dict[int, Balance], categories: list[Category],
     return CashFlow(income, expenses, by_main)
 
 
-def counts_as_income(balance: Balance, c: Category) -> bool:
-    """Income categories, except the derived inkomst/månadspeng: it is calculated from
-    bokföring/inkomst, which is already counted, so it would count the same money twice."""
+def salary_is_counted(categories: list[Category]) -> bool:
+    """Whether bokföring/inkomst, the salary the derived allowance comes from, counts as
+    income. It doesn't when Bokföring is hidden from the budget, as it usually is."""
+    return any((c.main_category.lower(), c.sub_category.lower()) == ALLOWANCE_SOURCE
+               and not c.hidden and not c.invert_sign for c in categories)
+
+
+def counts_as_income(balance: Balance, c: Category, categories: list[Category]) -> bool:
+    """Income categories that are not hidden. The derived inkomst/månadspeng is the
+    salary minus what went to the family, so it is counted only when the salary itself
+    (bokföring/inkomst) is not; counting both would count the same money twice."""
     if c.invert_sign or c.hidden:
         return False
-    return not (balance.derive_allowance
-                and (c.main_category.lower(), c.sub_category.lower()) == DERIVED_ALLOWANCE)
+    if balance.derive_allowance and (c.main_category.lower(),
+                                     c.sub_category.lower()) == DERIVED_ALLOWANCE:
+        return not salary_is_counted(categories)
+    return True
 
 
 def completed_months(year: int, now: datetime | None = None) -> int:
@@ -196,7 +207,7 @@ def summary_rows(balances: dict[int, Balance], categories: list[Category],
                 expenses[i] += value
                 if c.expense_role == "fixed":
                     fixed[i] += value
-            elif counts_as_income(b, c):
+            elif counts_as_income(b, c, categories):
                 b.get(main)  # derives inkomst/månadspeng before it is read
                 income[i] += b.get_sub_category(main, sub)
     for i, b in enumerate(balances.values()):
@@ -233,11 +244,18 @@ def summary_rows(balances: dict[int, Balance], categories: list[Category],
                    budget=variable_budget),
         SummaryRow("Balance", "balance", [i - e for i, e in zip(income, expenses)],
                    "Income minus expenses. Negative when more went out than came in."
-                   + (" The derived Inkomst \u203a Månadspeng is not counted as income, "
-                      "since it comes from Bokföring \u203a Inkomst."
+                   + (allowance_hint(categories)
                       if any(b.derive_allowance for b in balances.values()) else ""),
                    budget=balance_budget, is_income=True),
     ]
+
+
+def allowance_hint(categories: list[Category]) -> str:
+    if salary_is_counted(categories):
+        return (" Bokföring \u203a Inkomst counts as income, so the derived Inkomst \u203a "
+                "Månadspeng is not counted as well.")
+    return (" Inkomst \u203a Månadspeng counts as income: the salary minus what went to "
+            "the family (Bokföring is hidden).")
 
 
 @dataclass

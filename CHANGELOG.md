@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.11.1
+
+- Fixed the Balance row for the private account when Bokföring is hidden from the budget:
+  Inkomst › Månadspeng (the salary minus what goes to the family) now counts as income, so
+  Balance is no longer just the expenses with a minus sign. When Bokföring is shown, the
+  salary in Bokföring › Inkomst is the income as before and Månadspeng is not counted on
+  top of it. The charts' income follows the same rule.
+
 ## 2.11.0
 
 - New **Transfers** page: how much each person should transfer to the joint account in a

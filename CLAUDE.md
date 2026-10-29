@@ -121,8 +121,9 @@ UI amounts are entered in the original's direction (positive numbers for an expe
 shows it with `invert_sign` as one *Type* (`Category.kind`, `category_templates.KINDS`).
 `budget.summary_rows()` builds the "Expenses" / "Expenses excl. fixed costs" / "Balance"
 rows (expenses: not hidden, `counts_as_expense`, plus unclassified; income:
-`counts_as_income()`, which leaves out the derived `inkomst/månadspeng` so salary isn't
-counted twice), and `cash_flow()` for the charts uses the same rules. With the budgets
+`counts_as_income()`: the derived `inkomst/månadspeng` counts only when
+`bokföring/inkomst` doesn't (`salary_is_counted()` — usually Bokföring is hidden), so the
+salary is never counted twice and never left out), and `cash_flow()` for the charts uses the same rules. With the budgets
 passed in, the rows carry summed budgets (Balance only when an income group has one) and
 `summary_checks()` colours them like `budget_checks()`; both share `_compare()`. `categories.zero_check` marks categories that must add up to 0 each month;
 `zero_check_flags()` checks only finished months (`completed_months()`), hidden ones

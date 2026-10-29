@@ -58,6 +58,31 @@ def test_derived_allowance_is_not_counted_twice(path):
     assert flow.income[2] == 30000
 
 
+def test_derived_allowance_is_the_income_when_bokforing_is_hidden(path):
+    # Bokföring hidden from the budget: the salary isn't counted, so the månadspeng
+    # (salary − family account − last month's family outlays) is the income.
+    db.set_category_hidden(path, 1, True, main_category='bokföring')
+    add(path, '2024-02-20', -800, 'bokföring', 'familjeutlägg')
+    add(path, '2024-03-25', 30000, 'bokföring', 'inkomst')
+    add(path, '2024-03-26', -15000, 'bokföring', 'familjekonto')
+    add(path, '2024-03-10', -1200, 'mat', 'butik')
+    add(path, '2024-03-11', 250, 'inkomst', 'ränta')
+
+    r = rows(path, 1)
+    assert r['expenses'].values[2] == 1200
+    assert r['balance'].values[2] == (30000 - 15000 - 800) + 250 - 1200
+    assert 'Inkomst › Månadspeng counts as income' in r['balance'].hint
+
+    flow = cash_flow(monthly_balances(path, db.get_account(path, 1), 2024), db.get_categories(path, 1))
+    assert flow.income[2] == 14450 and flow.expenses[2] == 1200
+
+    # A hidden månadspeng is not income either.
+    allowance = next(c.id for c in db.get_categories(path, 1)
+                     if (c.main_category, c.sub_category) == ('inkomst', 'månadspeng'))
+    db.set_category_hidden(path, 1, True, category_id=allowance)
+    assert rows(path, 1)['balance'].values[2] == 250 - 1200
+
+
 def test_budgets_on_the_summary_rows(path):
     family = db.create_account(path, 'Familj', 'family')
     db.set_group_kind(path, family, 'boende', True, 'fixed')
