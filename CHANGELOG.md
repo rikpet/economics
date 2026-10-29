@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.10.0
+
+- Issuer rules now work for card purchases from SEB. Their text ends with the purchase
+  date (`MAXI ICA STO/25-12-30`), which made every purchase a new issuer. The date is now
+  dropped, so the issuer is `MAXI ICA STO` and one rule covers every purchase in that
+  shop. Transactions and rules already in the database are updated the same way when the
+  add-on starts. If you had several rules for one shop with different dates, the newest is
+  kept, and a rule without a date always wins.
+- After an import you see what happened instead of a one-line message: the file's dates,
+  how many transactions were added, classified by issuer rules, left to classify and
+  already imported, plus a list of the added transactions. There are buttons to classify
+  the rest, see the transactions or go to the budget, and the form to import the next
+  file. Importing the same file again says clearly that nothing was new.
+- A file that isn't the export it was read as (e.g. a csv from another bank) now gets an
+  error that says which columns are missing.
+- Classify several transactions at once: choose categories for as many as you like and
+  press **Save** once. The Save button shows how many will be saved, and the page warns
+  you before you leave it with unsaved choices.
+
 ## 2.9.0
 
 - New **Balance** row under the budget: income minus expenses for each month and the year.

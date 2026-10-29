@@ -33,9 +33,16 @@ under **Categories**. Switch account with the selector at the top.
 ## Working with transactions
 
 1. **Import**: upload a SEB `.csv` or Remember `.xls` export. Rows already imported are
-   skipped, so overlapping exports are fine.
-2. **Classify**: choose a category for each new transaction. Tick *Remember for this
-   issuer* to classify that issuer automatically from now on.
+   skipped, so overlapping exports are fine. Afterwards the page shows what happened: the
+   file's dates, how many transactions were added, classified by issuer rules, left to
+   classify or already imported, and the added transactions themselves.
+2. **Classify**: choose categories for as many new transactions as you like and press
+   **Save** once. Transactions you leave without a category stay on the page. Tick
+   *Remember for this issuer* to classify that issuer automatically from now on.
+
+Card purchases in SEB exports end with the purchase date (`MAXI ICA STO/25-12-30`). The
+date is dropped, so the issuer is `MAXI ICA STO` and one issuer rule covers every purchase
+there.
 3. **Budget**: amounts per month and category. Click an amount to see its transactions.
 4. **Charts**: income and expenses per month, the spread over categories, and one category
    compared with the year before. Click a category bar to look closer at it. Above the

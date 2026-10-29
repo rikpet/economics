@@ -111,6 +111,9 @@ def format_money(value: float | None) -> str:
     return text.replace("-", "−")
 
 
+ORIGIN_LABELS = {"seb": "SEB", "remember": "Remember card"}
+
+
 def create_app(database_path: str, on_change: Callable[[], None] | None = None,
                secret_key: str | None = None) -> Flask:
     """Create the web app.
@@ -125,6 +128,7 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
     app.session_interface = ScopedSessionInterface()
     app.config["DATABASE"] = database_path
     app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
+    app.config["MAX_FORM_PARTS"] = 20_000  # the Classify page posts three fields per transaction
     app.wsgi_app = IngressMiddleware(app.wsgi_app)
     app.jinja_env.filters["money"] = format_money
     app.jinja_env.filters["exact"] = format_exact
@@ -573,19 +577,18 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
                 upload.save(path)
                 result = operations.import_file(dbp(), account_id, path, origin)
             except Exception as e:  # parsing errors come in many shapes from csv/pandas
-                flash(f"Could not import {upload.filename} as {origin}: {e}", "error")
+                flash(f"Could not import {upload.filename} as {ORIGIN_LABELS.get(origin, origin)}: "
+                      f"{e}", "error")
                 return redirect(here())
             finally:
                 os.remove(path)
 
-            flash(f"{upload.filename}: added {result.added} transactions "
-                  f"({result.classified} classified by issuer rules), "
-                  f"skipped {result.skipped_duplicates} duplicates.", "ok")
-            if result.added > result.classified:
-                return redirect(url_for("classify", account_id=account_id))
-            return redirect(here())
+            # Shown right away rather than after a redirect: the result lists every
+            # transaction in the file, which doesn't fit in the session cookie.
+            return render_template("import.html", result=result, filename=upload.filename,
+                                   origin=ORIGIN_LABELS.get(origin, origin))
 
-        return render_template("import.html", origins=list(operations.ORIGINS))
+        return render_template("import.html", result=None)
 
     # ---------------------------------------------------------------------------------
     # Classify
@@ -599,28 +602,44 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
             groups=category_choices(account_id),
         )
 
-    @app.post("/<int:account_id>/classify/<int:transaction_id>")
-    def classify_one(account_id: int, transaction_id: int):
+    @app.post("/<int:account_id>/classify")
+    def classify_save(account_id: int):
+        """Save every transaction on the Classify page that got a category."""
         load_account(account_id)
-        category = category_by_id(account_id, request.form.get("category"))
-        if category is None:
-            flash("Choose a category.", "error")
+        saved = remembered = 0
+        for key, value in request.form.items():
+            transaction_id = key.removeprefix("category_")
+            if transaction_id == key or not transaction_id.isdigit() or not value:
+                continue
+            category = category_by_id(account_id, value)
+            if category is None:
+                continue
+            remember = bool(request.form.get(f"remember_{transaction_id}"))
+            try:
+                operations.classify_transaction(
+                    dbp(), account_id, int(transaction_id), category.main_category,
+                    category.sub_category,
+                    request.form.get(f"comment_{transaction_id}", "").strip() or None,
+                    remember_issuer=remember)
+            except ValueError as e:  # e.g. classified or deleted in another tab
+                flash(str(e), "error")
+                continue
+            saved += 1
+            remembered += remember
+        if not saved:
+            flash("Choose a category for at least one transaction.", "error")
             return redirect(url_for("classify", account_id=account_id))
-        remember = bool(request.form.get("remember"))
-        try:
-            operations.classify_transaction(
-                dbp(), account_id, transaction_id, category.main_category, category.sub_category,
-                request.form.get("comment", "").strip() or None, remember_issuer=remember)
-        except ValueError as e:
-            flash(str(e), "error")
-            return redirect(url_for("classify", account_id=account_id))
-        if remember:
+
+        message = f"Saved {saved} transaction{'s' if saved != 1 else ''}"
+        if remembered:
+            message += f" and {remembered} issuer rule{'s' if remembered != 1 else ''}"
             others = operations.apply_issuer_rules(dbp(), account_id)
             if others:
-                flash(f"The rule also classified {others} other transactions.", "ok")
-        anchor = request.form.get("next", "")
-        return redirect(url_for("classify", account_id=account_id)
-                        + (f"#t-{anchor}" if anchor.isdigit() else ""))
+                message += f"; the rules also classified {others} more"
+        left = db.count_unclassified_transactions(dbp(), account_id)
+        message += f". {left} left to classify." if left else ". Everything is classified."
+        flash(message, "ok")
+        return redirect(url_for("classify", account_id=account_id))
 
     @app.post("/<int:account_id>/classify/apply-rules")
     def apply_rules(account_id: int):

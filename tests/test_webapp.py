@@ -73,19 +73,22 @@ def test_import_classify_and_budget(client, path, changes):
     family = db.create_account(path, 'Familj', 'family')
 
     html = upload(client, family, SEB_FILE).get_data(as_text=True)
-    assert 'added 8 transactions' in html
+    assert 'seb_transactions.csv imported' in html
+    assert '<strong>8</strong> added' in html and '<strong>0</strong> already imported' in html
+    assert '2025-09-26</span> – <span class="nowrap">2025-10-27' in html
     assert len(db.get_transactions(path, family)) == 8
     assert db.get_transactions(path, 1) == []
     assert changes
 
     # Importing the same file again only adds duplicates.
     html = upload(client, family, SEB_FILE).get_data(as_text=True)
-    assert 'added 0 transactions' in html and 'skipped 8 duplicates' in html
+    assert 'Nothing new in seb_transactions.csv' in html
+    assert 'All 8 transactions in the file were imported before' in html
 
     pant = next(t for t in db.get_transactions(path, family) if t.issuer == 'PANT')
     el = category_id(path, family, 'boende', 'el')
-    client.post(f'/{family}/classify/{pant.id}',
-                data={'category': str(el), 'comment': 'test', 'remember': '1'})
+    client.post(f'/{family}/classify', data={
+        f'category_{pant.id}': str(el), f'comment_{pant.id}': 'test', f'remember_{pant.id}': '1'})
     trans = db.get_transaction(path, family, pant.id)
     assert (trans.main_category, trans.sub_category, trans.comment) == ('boende', 'el', 'test')
     assert db.get_issuer_classification(path, family, 'PANT').sub_category == 'el'
@@ -105,7 +108,7 @@ def test_classify_rejects_category_from_other_account(client, path):
     trans = db.get_transactions(path, family)[0]
     private_category = category_id(path, 1, 'mat', 'butik')
 
-    client.post(f'/{family}/classify/{trans.id}', data={'category': str(private_category)})
+    client.post(f'/{family}/classify', data={f'category_{trans.id}': str(private_category)})
     assert db.get_transaction(path, family, trans.id).main_category is None
 
 

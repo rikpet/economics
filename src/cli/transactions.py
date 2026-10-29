@@ -84,7 +84,9 @@ def add_transactions(app: AppContext, file_path, origin):
     except ValueError as e:
         raise click.ClickException(str(e))
 
-    click.echo(f'Added {result.added} transactions. Skipped {result.skipped_duplicates} duplicates.')
+    click.echo(result.summary())
+    if result.unclassified:
+        click.echo("Classify the rest with: econ trans classify")
 
 #TODO: add check on category and sub-category
 @click.command(name='list')

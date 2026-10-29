@@ -1,6 +1,27 @@
 import csv
 import hashlib
+import re
 from app_types import IssuerClassification, Transaction
+
+# Card purchases in SEB exports end with the purchase date: "MAXI ICA STO/25-12-30".
+_PURCHASE_DATE = re.compile(r"\s*/\s*(?:\d{2}){1,2}-\d{2}-\d{2}\s*$")
+
+SEB_COLUMNS = ("Valutadatum", "Verifikationsnummer", "Text", "Belopp")
+REMEMBER_COLUMNS = ("Datum", "Detaljer", "Plats", "Transaktionsbelopp", "Fakturabelopp")
+
+
+def clean_issuer(text: str) -> str:
+    """The issuer without a trailing purchase date, so one issuer rule matches every
+    purchase: "MAXI ICA STO/25-12-30" -> "MAXI ICA STO"."""
+    text = text.strip()
+    return _PURCHASE_DATE.sub("", text).strip() or text
+
+
+def _check_columns(found, required: tuple[str, ...], export: str):
+    missing = [c for c in required if c not in (found or [])]
+    if missing:
+        raise ValueError(f"This does not look like a {export}: the column(s) "
+                         f"{', '.join(missing)} are missing.")
 
 
 def _hash_id(prefix: str, *parts: str) -> str:
@@ -28,6 +49,7 @@ def parse_seb_transactions(file_path: str) -> list[Transaction]:
     """
     with open(file_path, encoding="utf-8-sig") as f:
         reader = csv.DictReader(f, delimiter=';')
+        _check_columns(reader.fieldnames, SEB_COLUMNS, "SEB export (csv, separated by ;)")
 
         transactions = []
 
@@ -40,7 +62,7 @@ def parse_seb_transactions(file_path: str) -> list[Transaction]:
             transactions.append(
                 Transaction(
                     date=date,
-                    issuer=text,
+                    issuer=clean_issuer(text),
                     amount=amount,
                     origin="SEB",
                     verification_number=_hash_id("SEB", date, verifikationsnummer, text, belopp)
@@ -64,6 +86,7 @@ def parse_remember_transactions(file_path: str) -> list[Transaction]:
 
     transactions = []
     df = pd.read_excel(file_path, header=2)
+    _check_columns(list(df.columns), REMEMBER_COLUMNS, "Remember card export (xls)")
     for _, row in df.iterrows():
         date = str(row.get('Datum'))
         issuer = str(row.get('Detaljer')).strip()
@@ -74,7 +97,7 @@ def parse_remember_transactions(file_path: str) -> list[Transaction]:
         transactions.append(
             Transaction(
                 date=date,
-                issuer=issuer,
+                issuer=clean_issuer(issuer),
                 amount=amount,
                 origin=origin,
                 verification_number=_hash_id("REM", date, issuer, plats, transaktionsbelopp)

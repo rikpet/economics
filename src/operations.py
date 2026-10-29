@@ -1,7 +1,7 @@
 """Actions shared by the CLI and the web UI."""
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import database as db
@@ -16,9 +16,41 @@ ORIGINS = {
 
 @dataclass
 class ImportResult:
-    added: int = 0
-    skipped_duplicates: int = 0
-    classified: int = 0
+    new: list[Transaction] = field(default_factory=list)         # added, in file order
+    duplicates: list[Transaction] = field(default_factory=list)  # already imported, skipped
+
+    @property
+    def added(self) -> int:
+        return len(self.new)
+
+    @property
+    def skipped_duplicates(self) -> int:
+        return len(self.duplicates)
+
+    @property
+    def classified(self) -> int:
+        """Added transactions that an issuer rule classified."""
+        return sum(1 for t in self.new if t.main_category)
+
+    @property
+    def unclassified(self) -> int:
+        return self.added - self.classified
+
+    @property
+    def period(self) -> tuple[str, str] | None:
+        """First and last date in the file."""
+        dates = sorted(t.date for t in self.new + self.duplicates)
+        return (dates[0], dates[-1]) if dates else None
+
+    def summary(self) -> str:
+        """One line for the CLI."""
+        if not self.new and not self.duplicates:
+            return "The file has no transactions."
+        text = (f"Added {self.added} transaction{'s' if self.added != 1 else ''} ({self.classified} classified by issuer "
+                f"rules, {self.unclassified} left to classify); {self.skipped_duplicates} "
+                f"were already imported.")
+        first, last = self.period
+        return f"{text} Dates {first} – {last}."
 
 
 def parse_file(file_path: str, origin: str) -> list[Transaction]:
@@ -41,11 +73,10 @@ def import_transactions(database_path: str, account_id: int,
 
         try:
             db.insert_transaction(database_path, account_id, trans)
-            result.added += 1
-            if issuer is not None:
-                result.classified += 1
+            result.new.append(trans)
         except sqlite3.IntegrityError:
-            result.skipped_duplicates += 1
+            trans.main_category = trans.sub_category = None  # not what is stored
+            result.duplicates.append(trans)
     return result
 
 

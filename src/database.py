@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from datetime import datetime
 import os
+import re
 import sqlite3
 from typing import Iterator, List, Tuple
 
@@ -13,6 +14,7 @@ from category_templates import (
     TRANSFER_SUBS,
     ZERO_CHECK_SUB_PART,
 )
+from parser import clean_issuer
 
 EXPENSE_ROLES = ('variable', 'fixed', 'transfer')
 
@@ -247,10 +249,39 @@ def _migration_7_zero_check_acks(c: sqlite3.Cursor):
               'PRIMARY KEY(account_id, main_category, sub_category, year, month))')
 
 
+def _migration_8_issuer_purchase_dates(c: sqlite3.Cursor):
+    """Card purchases from SEB had the purchase date in the issuer ("MAXI ICA STO/25-12-30"),
+    so an issuer rule only ever matched one day. Drop the date from transactions and rules."""
+    date = re.compile(r"\s*/\s*(?:\d{2}){1,2}-\d{2}-\d{2}\s*$")  # as parser.clean_issuer then
+
+    def clean(issuer: str) -> str:
+        return date.sub("", issuer).strip() or issuer
+
+    rows = c.execute("SELECT id, issuer FROM transactions WHERE issuer LIKE '%/%'").fetchall()
+    for row_id, issuer in rows:
+        if clean(issuer) != issuer:
+            c.execute('UPDATE transactions SET issuer = ? WHERE id = ?', (clean(issuer), row_id))
+
+    # Several dated rules can become one issuer. A rule without a date wins, otherwise the
+    # newest one.
+    rows = c.execute("SELECT id, account_id, issuer FROM issuer_classifications "
+                     "WHERE issuer LIKE '%/%' ORDER BY id DESC").fetchall()
+    for row_id, account_id, issuer in rows:
+        name = clean(issuer)
+        if name == issuer:
+            continue
+        taken = c.execute('SELECT 1 FROM issuer_classifications WHERE account_id = ? AND issuer = ?',
+                          (account_id, name)).fetchone()
+        if taken:
+            c.execute('DELETE FROM issuer_classifications WHERE id = ?', (row_id,))
+        else:
+            c.execute('UPDATE issuer_classifications SET issuer = ? WHERE id = ?', (name, row_id))
+
+
 # Append-only: users have live databases at every version.
 MIGRATIONS = [_migration_1_initial, _migration_2_accounts, _migration_3_hidden_categories,
               _migration_4_split_transactions, _migration_5_expense_roles, _migration_6_budgets,
-              _migration_7_zero_check_acks]
+              _migration_7_zero_check_acks, _migration_8_issuer_purchase_dates]
 
 
 def _apply_category_defaults(conn: sqlite3.Connection, account_id: int,
@@ -880,7 +911,7 @@ def classify_issuer(database_path: str, account_id: int, classification: IssuerC
                         main_category = excluded.main_category,
                         sub_category = excluded.sub_category''',
                      (account_id,
-                      classification.issuer,
+                      clean_issuer(classification.issuer),
                       classification.main_category,
                       classification.sub_category))
 
@@ -888,7 +919,8 @@ def classify_issuer(database_path: str, account_id: int, classification: IssuerC
 def get_issuer_classification(database_path: str, account_id: int, issuer: str) -> IssuerClassification | None:
     with _connect(database_path) as conn:
         row = conn.execute('SELECT * FROM issuer_classifications '
-                           'WHERE account_id = ? AND issuer = ?', (account_id, issuer)).fetchone()
+                           'WHERE account_id = ? AND issuer = ?',
+                           (account_id, clean_issuer(issuer))).fetchone()
         return _issuer(row) if row else None
 
 

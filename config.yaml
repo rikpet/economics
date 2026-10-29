@@ -1,5 +1,5 @@
 name: Economics
-version: "2.9.0"
+version: "2.10.0"
 slug: economics
 description: Private and family economy - import bank files, classify transactions and follow the budget.
 url: https://github.com/rikpet/economics

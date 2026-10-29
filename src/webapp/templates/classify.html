@@ -11,23 +11,70 @@
 {% if not rows %}
 <div class="card empty">All transactions are classified.</div>
 {% else %}
-<div class="classify-list">
-  {% for t in rows %}
-  <form method="post" action="{{ url_for('classify_one', account_id=account.id, transaction_id=t.id) }}" class="card classify-item" id="t-{{ t.id }}">
-    {% if loop.nextitem %}<input type="hidden" name="next" value="{{ loop.nextitem.id }}">{% endif %}
-    <div class="classify-head">
-      <strong>{{ t.issuer }}</strong>
-      <span>{{ amount(t.amount) }}</span>
-      <span class="muted">{{ t.date }} · {{ t.origin }}</span>
+<p class="hint">Choose categories for as many transactions as you like and save them all at once.
+  Transactions left without a category stay here.</p>
+<form method="post" action="{{ url_for('classify_save', account_id=account.id) }}" id="classify-form">
+  <div class="classify-list">
+    {% for t in rows %}
+    <div class="card classify-item" id="t-{{ t.id }}">
+      <div class="classify-head">
+        <strong>{{ t.issuer }}</strong>
+        <span>{{ amount(t.amount) }}</span>
+        <span class="muted">{{ t.date }} · {{ t.origin }}</span>
+      </div>
+      <div class="classify-fields">
+        {{ category_select(groups, name="category_" ~ t.id) }}
+        <input type="text" name="comment_{{ t.id }}" placeholder="Comment (optional)" aria-label="Comment for {{ t.issuer }} {{ t.date }}">
+        <label class="check"><input type="checkbox" name="remember_{{ t.id }}" value="1"> Remember for this issuer</label>
+      </div>
     </div>
-    <div class="classify-fields">
-      {{ category_select(groups, required=True) }}
-      <input type="text" name="comment" placeholder="Comment (optional)">
-      <label class="check"><input type="checkbox" name="remember" value="1"> Remember for this issuer</label>
-      <button type="submit">Save</button>
-    </div>
-  </form>
-  {% endfor %}
-</div>
+    {% endfor %}
+  </div>
+  <div class="save-bar">
+    <span class="muted" id="classify-count" aria-live="polite">No category chosen yet</span>
+    <button type="submit" id="classify-save" disabled>Save</button>
+  </div>
+</form>
+<script>
+(function () {
+  var form = document.getElementById("classify-form");
+  var count = document.getElementById("classify-count");
+  var save = document.getElementById("classify-save");
+  var dirty = false;
+  function update() {
+    var n = 0;
+    form.querySelectorAll("select[name^='category_']").forEach(function (s) {
+      var chosen = !!s.value;
+      s.closest(".classify-item").classList.toggle("chosen", chosen);
+      if (chosen) n++;
+    });
+    count.textContent = n ? n + (n === 1 ? " transaction" : " transactions") + " to save"
+                          : "No category chosen yet";
+    save.textContent = n ? "Save " + n : "Save";
+    save.disabled = !n;
+  }
+  form.addEventListener("change", function () { dirty = true; update(); });
+  form.addEventListener("input", function () { dirty = true; });
+  form.addEventListener("submit", function () {
+    dirty = false;
+    // Only send the transactions that got a category: keeps the request small.
+    form.querySelectorAll("select[name^='category_']").forEach(function (s) {
+      if (!s.value) {
+        s.closest(".classify-item").querySelectorAll("input, select").forEach(function (el) {
+          el.disabled = true;
+        });
+      }
+    });
+  });
+  window.addEventListener("beforeunload", function (e) {
+    if (dirty) { e.preventDefault(); e.returnValue = ""; }
+  });
+  window.addEventListener("pageshow", function () {  // back button: fields are enabled again
+    form.querySelectorAll("[disabled]").forEach(function (el) { if (el !== save) el.disabled = false; });
+    update();
+  });
+  update();
+})();
+</script>
 {% endif %}
 {% endblock %}

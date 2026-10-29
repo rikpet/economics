@@ -193,6 +193,11 @@ to keep idle memory low.
   `data-month2` = the one before on the table; `?m=` in the URL; ‹ › step one month). Sections marked `details[data-mobile-closed]` are folded on phones by the
   script in `base.html`. Check new pages at 360 and 390px: no element wider than the
   screen, tap targets about 40px.
+- **Issuers are cleaned before they are stored or looked up.** SEB card purchases end with
+  the purchase date (`MAXI ICA STO/25-12-30`); `parser.clean_issuer()` drops it, and
+  `classify_issuer()` / `get_issuer_classification()` apply it too, so a rule typed with a
+  date still matches. Migration 8 cleaned existing rows with its own frozen copy of the
+  regex. The verification-number hash still uses the raw text, so re-imports dedupe.
 - **The legacy `C:\Users\...` default path** becomes a literal file name in the working
   directory if old code runs on Linux; it's git-ignored (`*.db`) but delete it if it appears.
 
