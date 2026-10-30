@@ -52,7 +52,7 @@ def path(tmp_path):
 
 def test_new_database_has_private_account(path):
     accounts = db.get_accounts(path)
-    assert [a.name for a in accounts] == ['Privat']
+    assert [a.name for a in accounts] == ['Rikard']
     assert accounts[0].derive_allowance is True
     cats = {(c.main_category, c.sub_category) for c in db.get_categories(path, 1)}
     assert ('mat', 'butik') in cats
@@ -69,7 +69,7 @@ def test_legacy_database_is_migrated_to_private_account(tmp_path):
     db.create_tables(p)
     db.create_tables(p)  # idempotent
 
-    assert [a.name for a in db.get_accounts(p)] == ['Privat']
+    assert [a.name for a in db.get_accounts(p)] == ['Rikard']
     transactions = db.get_transactions(p, 1)
     assert len(transactions) == 3
     assert transactions[0].main_category == 'Övrigt'
@@ -92,7 +92,7 @@ def test_create_account_from_template(path):
     assert ('bokföring', 'familjeutlägg') not in cats
     assert db.find_account(path, 'familj').id == family
     assert db.find_account(path, str(family)).name == 'Familj'
-    assert db.find_account(path, '').name == 'Privat'
+    assert db.find_account(path, '').name == 'Rikard'
     assert db.find_account(path, 'nope') is None
 
     with pytest.raises(ValueError, match='already exists'):

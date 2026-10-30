@@ -70,7 +70,7 @@ def test_purchase_date_is_not_part_of_the_issuer(path, tmp_path):
 
 def test_migration_drops_purchase_dates(path):
     with sqlite3.connect(path) as conn:
-        conn.executescript('DROP TABLE person_months; DROP TABLE people; PRAGMA user_version = 7;')
+        conn.executescript('DROP TABLE allowance_months; DROP TABLE person_months; DROP TABLE people; PRAGMA user_version = 7;')
         for issuer in ('TESTBUTIKEN STO/25-12-30', 'TESTBUTIKEN STO/26-01-04', 'A/B TESTSSON'):
             conn.execute("INSERT INTO transactions (account_id, date, issuer, amount, origin) "
                          "VALUES (1, '2025-12-30', ?, -1, 'SEB')", (issuer,))

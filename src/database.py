@@ -310,11 +310,38 @@ def _migration_9_transfers(c: sqlite3.Cursor):
               'PRIMARY KEY(account_id, person_id, year, month))')
 
 
+def _migration_10_household(c: sqlite3.Cursor):
+    """The app is for one household with two fixed accounts: the private account is called
+    Rikard, and the joint account's allowance calculation has Rikard and Sara. The allowance
+    is one amount per month for the household instead of one per person."""
+    c.execute("UPDATE accounts SET name = 'Rikard' WHERE name = 'Privat' "
+              "AND NOT EXISTS (SELECT 1 FROM accounts WHERE name = 'Rikard')")
+    c.execute('CREATE TABLE allowance_months ('
+              'account_id INTEGER NOT NULL REFERENCES accounts(id), '
+              'year INTEGER NOT NULL, '
+              'month INTEGER NOT NULL, '
+              'amount REAL NOT NULL, '
+              'PRIMARY KEY(account_id, year, month))')
+    c.execute('INSERT OR IGNORE INTO allowance_months (account_id, year, month, amount) '
+              'SELECT account_id, year, month, allowance FROM person_months '
+              'WHERE allowance IS NOT NULL ORDER BY person_id')
+
+    private = c.execute('SELECT id FROM accounts WHERE derive_allowance = 1 '
+                        'ORDER BY id LIMIT 1').fetchone()
+    joint = c.execute('SELECT id FROM accounts WHERE derive_allowance = 0 '
+                      'ORDER BY id LIMIT 1').fetchone()
+    if joint and not c.execute('SELECT 1 FROM people WHERE account_id = ?', joint).fetchone():
+        c.execute('INSERT INTO people (account_id, name, linked_account_id, position) '
+                  "VALUES (?, 'Rikard', ?, 0)", (joint[0], private[0] if private else None))
+        c.execute('INSERT INTO people (account_id, name, linked_account_id, position) '
+                  "VALUES (?, 'Sara', NULL, 1)", (joint[0],))
+
+
 # Append-only: users have live databases at every version.
 MIGRATIONS = [_migration_1_initial, _migration_2_accounts, _migration_3_hidden_categories,
               _migration_4_split_transactions, _migration_5_expense_roles, _migration_6_budgets,
               _migration_7_zero_check_acks, _migration_8_issuer_purchase_dates,
-              _migration_9_transfers]
+              _migration_9_transfers, _migration_10_household]
 
 
 def _apply_category_defaults(conn: sqlite3.Connection, account_id: int,
@@ -474,7 +501,8 @@ def delete_account(database_path: str, account_id: int):
         if conn.execute('SELECT COUNT(*) FROM accounts').fetchone()[0] <= 1:
             raise ValueError('The last account cannot be deleted.')
         for table in ('categories', 'issuer_classifications', 'allowances', 'settings',
-                      'budgets', 'zero_check_acks', 'person_months', 'people'):
+                      'budgets', 'zero_check_acks', 'person_months', 'people',
+                      'allowance_months'):
             conn.execute(f'DELETE FROM {table} WHERE account_id = ?', (account_id,))
         conn.execute('UPDATE people SET linked_account_id = NULL WHERE linked_account_id = ?',
                      (account_id,))
@@ -1104,16 +1132,14 @@ def delete_person(database_path: str, account_id: int, person_id: int):
         conn.execute('DELETE FROM people WHERE account_id = ? AND id = ?', (account_id, person_id))
 
 
-def get_person_months(database_path: str, account_id: int, until_year: int) -> list[PersonMonth]:
-    """Every stored month up to and including until_year, oldest first (earlier years are
-    needed for the allowance, which carries over)."""
+def get_person_months(database_path: str, account_id: int, year: int) -> list[PersonMonth]:
+    """What the account's people entered for the months of a year."""
     with _connect(database_path) as conn:
-        rows = conn.execute('SELECT * FROM person_months WHERE account_id = ? AND year <= ? '
-                            'ORDER BY year, month', (account_id, until_year)).fetchall()
+        rows = conn.execute('SELECT * FROM person_months WHERE account_id = ? AND year = ? '
+                            'ORDER BY month', (account_id, year)).fetchall()
         return [PersonMonth(person_id=r['person_id'], year=r['year'], month=r['month'],
                             income=r['income'], income_input=r['income_input'],
-                            costs=r['costs'], costs_input=r['costs_input'],
-                            allowance=r['allowance']) for r in rows]
+                            costs=r['costs'], costs_input=r['costs_input']) for r in rows]
 
 
 def set_person_month(database_path: str, account_id: int, value: PersonMonth):
@@ -1123,12 +1149,31 @@ def set_person_month(database_path: str, account_id: int, value: PersonMonth):
                         (account_id, value.person_id)).fetchone() is None:
             raise ValueError(f'No person with id {value.person_id}.')
         key = (account_id, value.person_id, value.year, value.month)
-        if value.income is None and value.costs is None and value.allowance is None:
+        if value.income is None and value.costs is None:
             conn.execute('DELETE FROM person_months WHERE account_id = ? AND person_id = ? '
                          'AND year = ? AND month = ?', key)
             return
         conn.execute('INSERT OR REPLACE INTO person_months (account_id, person_id, year, month, '
-                     'income, income_input, costs, costs_input, allowance) '
-                     'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                     (*key, value.income, value.income_input, value.costs, value.costs_input,
-                      value.allowance))
+                     'income, income_input, costs, costs_input) '
+                     'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                     (*key, value.income, value.income_input, value.costs, value.costs_input))
+
+
+def get_allowance_months(database_path: str, account_id: int, year: int) -> dict[int, float]:
+    """{month: allowance} for the months of a year that have their own allowance."""
+    with _connect(database_path) as conn:
+        rows = conn.execute('SELECT month, amount FROM allowance_months '
+                            'WHERE account_id = ? AND year = ?', (account_id, year)).fetchall()
+        return {r['month']: r['amount'] for r in rows}
+
+
+def set_allowance_month(database_path: str, account_id: int, year: int, month: int,
+                        amount: float | None):
+    """Set a month's allowance; None goes back to the default."""
+    with _connect(database_path) as conn:
+        if amount is None:
+            conn.execute('DELETE FROM allowance_months WHERE account_id = ? AND year = ? '
+                         'AND month = ?', (account_id, year, month))
+        else:
+            conn.execute('INSERT OR REPLACE INTO allowance_months (account_id, year, month, amount) '
+                         'VALUES (?, ?, ?, ?)', (account_id, year, month, amount))

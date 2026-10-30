@@ -1,5 +1,28 @@
 # Changelog
 
+## 3.0.0
+
+- The app is now for one household with two accounts: **Familj** and **Rikard**. The
+  account *Privat* is renamed **Rikard**. Accounts can still be renamed under Accounts, but
+  no longer be added or removed.
+- **Home Assistant: the private account's sensors get new names**, e.g.
+  `sensor.economics_privat_mat` becomes `sensor.economics_rikard_mat`. Update dashboards
+  and automations that use them.
+- The *Transfers* page is now **Allowance**, the allowance calculation: for Rikard and Sara,
+  income − shared expenses − allowance gives what each of you transfers to Familj. The
+  link in the menu always opens Familj's calculation. Rikard and Sara are added
+  automatically.
+- The allowance is one amount per month for both of you: **12 000 kr** unless the month
+  has its own. Change a month in the field at the top of the form, or the default under
+  *Settings and people*. (Before, it was set per person and carried over to the following
+  months.)
+- Rikard's debt in his own account (Bokföring › Familjeutlägg) is now **added** to his
+  shared expenses the month after, so you can also enter other shared expenses for him.
+  His salary is still taken from Bokföring › Inkomst unless you enter an income.
+- Command line: `econ transfer allowance` sets a month's allowance or the default, and the
+  `econ transfer` commands find Familj by themselves. `econ account add` and
+  `econ account remove` are gone.
+
 ## 2.12.0
 
 - The budget shows the **average per month** instead of the year's total in the last

@@ -6,8 +6,10 @@ Guidance for Claude Code when working in this repository.
 
 Personal economy app for Rikard Pettersson: import bank exports (SEB csv, Remember card
 xls), classify the transactions and follow a budget per month and category. Data is split
-into **accounts** (e.g. *Familj* and *Privat*), each with its own transactions, issuer
-rules and category tree. Storage is SQLite. It runs three ways on the same database:
+into two fixed **accounts**, *Familj* (joint) and *Rikard* (private, called *Privat* before
+migration 10), each with its own transactions, issuer rules and category tree. Accounts
+can be renamed but not added or removed in the UI or CLI (the user's choice: one
+household); `db.create_account()` remains for tests. Storage is SQLite. It runs three ways on the same database:
 
 - **Home Assistant add-on** on a Raspberry Pi 5 (aarch64): Flask web UI via Ingress, plus
   budget sensors pushed to HA. Runs next to the user's other add-on, `rikpet/ha-todo`.
@@ -28,7 +30,7 @@ src/                         flat modules, imported as top-level names (`import 
                              (incl. splits), issuer rules
   balance.py                 Balance: one month's totals per (main, sub) category
   budget.py                  monthly_balances(), budget_table(), cash_flow(), hidden-category helpers
-  transfers.py               transfer_year(): what each person transfers to an account; parse_sum()
+  transfers.py               the Allowance page: transfer_year(), month_allowances(), parse_sum()
   operations.py              import/classify/modify actions shared by CLI and web
   parser.py                  SEB / Remember / legacy csv parsers
   category_templates.py      category trees for new accounts (private, family, empty)
@@ -80,7 +82,7 @@ Implementation detail belongs in the commit message.
 is the number applied. Never edit an existing entry — live databases exist at every version.
 SQLite can't alter constraints, so those changes rebuild the table (migration 2 is the
 worked example). Legacy (pre-account) databases have `user_version` 0 and go through the
-whole list; all their data ends up in account 1, *Privat*.
+whole list; all their data ends up in account 1 (*Privat*, renamed *Rikard* by migration 10).
 
 **Everything is account-scoped.** Database functions take `(database_path, account_id, ...)`
 and every query filters on `account_id` — including lookups by id, so one account can never
@@ -103,7 +105,7 @@ SQLite's `NOCASE` only folds ASCII, so `'Övrigt' != 'övrigt'` there.
 positive numbers. Unknown or deleted categories count as *Uncategorized* instead of
 raising, so the budget never breaks when categories are edited.
 
-**Derived allowance.** For accounts with `derive_allowance` (Privat), `inkomst/månadspeng` is
+**Derived allowance.** For accounts with `derive_allowance` (Rikard), `inkomst/månadspeng` is
 calculated, not imported: `bokföring/inkomst − bokföring/familjekonto − previous month's
 bokföring/familjeutlägg`. `monthly_balances()` wires up the previous month (December of the
 year before for January).
@@ -142,16 +144,21 @@ over `average_months()` (the finished months; the running month in January), col
 comparing it with the monthly budget (`BudgetCheck.average_red`).
 Without a budget nothing is coloured — amounts stay in the normal text colour.
 
-**Transfers** (migration 9, tables `people` and `person_months`): the people who pay into
-an account (the family's joint account), and per month what they entered: income,
-one-off costs (both with the text as typed, `income_input`/`costs_input`, since
-`parse_sum()` accepts `=100+250`) and allowance. `transfers.transfer_year()` gives
-`income − costs − allowance` per person and month; the allowance carries over from the last
-month it was entered, also across years. Pension is deliberately left out. A person with
-`linked_account_id` reads empty fields from that account like the derived allowance does
-(Bokföring › Inkomst, previous month's Bokföring › Familjeutlägg) and shows
-Bokföring › Familjekonto as what was transferred. That link is the one place an account
-reads another account's data on purpose; people and their months are still account-scoped.
+**Allowance calculation** (the *Allowance* page, routes `/<id>/transfers`; migrations 9
+and 10, tables `people`, `person_months`, `allowance_months`): what Rikard and Sara each
+transfer to the joint account, `income − shared expenses − allowance`, pension deliberately
+left out. People belong to the joint account (migration 10 seeds Rikard, linked to the
+private account, and Sara); the nav's Allowance link and the `econ transfer` commands find
+that account themselves (the one with people, else the first without `derive_allowance`).
+`person_months` holds income and shared expenses with the text as typed
+(`income_input`/`costs_input`, since `parse_sum()` accepts `=100+250`); its `allowance`
+column is unused since migration 10. The allowance is one amount per month for the
+household: `allowance_months`, else the setting `default_allowance`, else
+`DEFAULT_ALLOWANCE` (12 000) — no carry-over. A person with `linked_account_id` uses that
+account's Bokföring › Inkomst when no income is entered, and its Bokföring › Familjeutlägg
+of the previous month (the debt) is **added** to their shared expenses; Bokföring ›
+Familjekonto shows what was transferred. That link is the one place an account reads
+another account's data on purpose; people and their months are still account-scoped.
 
 **Hidden categories** (`categories.hidden`) are left out of the budget table, the charts and
 the sensors, including their share of the main category's total. They still exist for

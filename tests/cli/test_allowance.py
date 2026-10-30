@@ -12,7 +12,7 @@ from cli.context import AppContext
 def app(tmp_path):
     path = str(tmp_path / 'test.db')
     db.create_tables(path)
-    return AppContext(path, 'Privat')
+    return AppContext(path, 'Rikard')
 
 
 def test_add_allowance(app):

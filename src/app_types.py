@@ -87,6 +87,5 @@ class PersonMonth:
     month: int
     income: float | None = None
     income_input: str | None = None  # as typed, e.g. '35000+5000'
-    costs: float | None = None       # one-off costs paid for the joint account
+    costs: float | None = None       # shared expenses paid with their own money
     costs_input: str | None = None
-    allowance: float | None = None   # carries over to later months until changed

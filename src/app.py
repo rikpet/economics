@@ -1,12 +1,10 @@
 import click
 
 from cli.accounts import (
-    add_account,
     add_category,
     list_accounts,
     set_budget,
     list_categories,
-    remove_account,
     remove_category,
     rename_account
 )
@@ -42,7 +40,7 @@ from cli.advanced import (
     run_db_schema
 )
 from cli.checks import acknowledge, list_checks, unacknowledge
-from cli.transfers import set_transfer, show_transfers
+from cli.transfers import set_allowance, set_transfer, show_transfers
 from cli.web import web
 from database import create_tables
 
@@ -72,9 +70,7 @@ def account():
     pass
 
 account.add_command(list_accounts)
-account.add_command(add_account)
 account.add_command(rename_account)
-account.add_command(remove_account)
 
 
 @cli.group()
@@ -100,11 +96,12 @@ check.add_command(unacknowledge)
 
 @cli.group()
 def transfer():
-    """What each person transfers to the account (e.g. the family's joint account)."""
+    """The allowance calculation: what each person transfers to the joint account."""
     pass
 
 transfer.add_command(show_transfers)
 transfer.add_command(set_transfer)
+transfer.add_command(set_allowance)
 
 
 @cli.group()

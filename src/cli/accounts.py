@@ -2,7 +2,6 @@ import click
 
 import database as db
 import operations
-from category_templates import TEMPLATES
 from cli.context import AppContext, pass_app
 from printout import generate_table
 
@@ -22,22 +21,6 @@ def list_accounts(app: AppContext):
     ))
 
 
-@click.command(name='add')
-@click.argument('name')
-@click.option('--template', type=click.Choice(list(TEMPLATES)), default='empty',
-              help="Category tree to start from.")
-@click.option('--derive-allowance', is_flag=True,
-              help="Calculate inkomst/månadspeng from the bokföring categories.")
-@pass_app
-def add_account(app: AppContext, name, template, derive_allowance):
-    """Create a new account."""
-    try:
-        account_id = db.create_account(app.database_path, name, template, derive_allowance)
-    except ValueError as e:
-        raise click.ClickException(str(e))
-    click.echo(f'Account {name!r} created with id {account_id}.')
-
-
 @click.command(name='rename')
 @click.argument('account')
 @click.argument('new_name')
@@ -52,22 +35,6 @@ def rename_account(app: AppContext, account, new_name):
     except ValueError as e:
         raise click.ClickException(str(e))
     click.echo(f'Account {found.name!r} renamed to {new_name!r}.')
-
-
-@click.command(name='remove')
-@click.argument('account')
-@click.confirmation_option(prompt='Delete the account with its categories and issuer rules?')
-@pass_app
-def remove_account(app: AppContext, account):
-    """Delete ACCOUNT (name or id). Only possible when it has no transactions."""
-    found = db.find_account(app.database_path, account)
-    if found is None:
-        raise click.ClickException(f'Unknown account: {account!r}')
-    try:
-        db.delete_account(app.database_path, found.id)
-    except ValueError as e:
-        raise click.ClickException(str(e))
-    click.echo(f'Account {found.name!r} deleted.')
 
 
 @click.command(name='list')

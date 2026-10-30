@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import amount %}
-{% block title %}Transfers{% endblock %}
+{% block title %}Allowance{% endblock %}
 
 {% macro link_select(selected=None) %}
 <select name="linked_account_id" aria-label="Own account">
@@ -11,18 +11,19 @@
 
 {% block content %}
 <div class="page-head">
-  <h1>Transfers to {{ account.name }}</h1>
+  <h1>Allowance</h1>
   <form method="get" class="inline">
     <input type="hidden" name="month" value="{{ month }}">
     <label class="visually-hidden" for="year-pick">Year</label>
     <select name="year" id="year-pick" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
   </form>
 </div>
-<p class="hint">What each person transfers to {{ account.name }} in a month:
-  <strong>income − one-off costs − allowance</strong>. One-off costs are what they paid for {{ account.name }} with their own money.
-  Pension savings are not included.</p>
+<p class="hint">How much each of you transfers to {{ account.name }} in a month:
+  <strong>income − shared expenses − allowance</strong>. Shared expenses are what you paid for the household with your own money;
+  the allowance is what you keep on your private account. Pension savings are not included.</p>
 
 {% if people %}
+{% set allowance, allowance_set = allowances[month - 1] %}
 <section class="card">
   <div class="month-switch transfer-switch">
     <a class="button secondary" href="{{ url_for('transfers', account_id=account.id, year=year - 1 if month == 1 else year, month=12 if month == 1 else month - 1) }}" aria-label="One month earlier">‹</a>
@@ -37,26 +38,28 @@
   <form method="post" action="{{ url_for('save_transfers', account_id=account.id) }}" id="transfer-form">
     <input type="hidden" name="year" value="{{ year }}">
     <input type="hidden" name="month" value="{{ month }}">
+    <label class="allowance-field">Allowance in {{ month_names[month - 1] }}, each
+      <input type="text" inputmode="decimal" name="allowance" value="{{ allowance|amount_input if allowance_set else '' }}"
+             placeholder="{{ default|amount_input }}" data-fallback="{{ default }}">
+      <span class="field-hint">{% if allowance_set %}Set for this month. Empty it to use the default, {{ default|money }} kr.{% else %}Empty: the default, {{ default|money }} kr.{% endif %}</span>
+    </label>
     <div class="transfer-people">
       {% for p in people %}{% set t = by_person[p.id][month - 1] %}{% set e = t.entered %}
-      <fieldset class="transfer-person" data-person="{{ p.id }}">
+      <fieldset class="transfer-person" data-person="{{ p.id }}" data-debt="{{ t.debt or 0 }}">
         <legend>{{ p.name }}</legend>
-        {% if p.linked_account_id %}<p class="hint">Empty fields use {{ linked_names[p.linked_account_id].name }}’s figures.</p>{% endif %}
         <label>Income
           <input type="text" inputmode="decimal" name="income_{{ p.id }}" value="{{ e.income_input or '' if e else '' }}"
                  {% if t.linked_income is not none %}placeholder="{{ t.linked_income|amount_input }}" data-fallback="{{ t.linked_income }}"{% endif %}>
-          {% if t.linked_income is not none %}<span class="field-hint">Empty: Bokföring › Inkomst, {{ t.linked_income|money }}</span>{% endif %}
+          {% if t.linked_income is not none %}<span class="field-hint">Empty: {{ linked_names[p.linked_account_id].name }}’s Bokföring › Inkomst, {{ t.linked_income|money }}</span>{% endif %}
         </label>
-        <label>One-off costs
-          <input type="text" inputmode="decimal" name="costs_{{ p.id }}" value="{{ e.costs_input or '' if e else '' }}"
-                 {% if t.linked_costs is not none %}placeholder="{{ t.linked_costs|amount_input }}" data-fallback="{{ t.linked_costs }}"{% endif %}>
-          <span class="field-hint">{% if t.linked_costs is not none %}Empty: Bokföring › Familjeutlägg in {{ month_names[(month - 2) % 12] }}, {{ t.linked_costs|money }}{% else %}Several amounts can be added up: 100+250+75{% endif %}</span>
+        <label>Shared expenses
+          <input type="text" inputmode="decimal" name="costs_{{ p.id }}" value="{{ e.costs_input or '' if e else '' }}" placeholder="0">
+          <span class="field-hint">Several amounts can be added up: 100+250+75</span>
         </label>
-        <label>Allowance
-          <input type="text" inputmode="decimal" name="allowance_{{ p.id }}" value="{{ e.allowance|amount_input if e and e.allowance is not none else '' }}"
-                 placeholder="{{ t.carried_allowance|amount_input }}" data-fallback="{{ t.carried_allowance }}">
-          <span class="field-hint">{% if e and e.allowance is not none %}Applies from this month on{% else %}Empty: the same as the month before, {{ t.carried_allowance|money }}{% endif %}</span>
-        </label>
+        {% if t.debt is not none %}
+        <p class="debt-line">+ debt from {{ month_names[(month - 2) % 12] }} in {{ linked_names[p.linked_account_id].name }} (Bokföring › Familjeutlägg): <strong>{{ t.debt|money }}</strong>
+          <br>Shared expenses in total: <strong data-costs>{{ t.costs|money }}</strong></p>
+        {% endif %}
         <p class="transfer-result">To {{ account.name }}: <strong data-result>{{ amount(t.to_account) }}</strong></p>
         {% if t.transferred %}<p class="hint">Transferred according to {{ linked_names[p.linked_account_id].name }} (Bokföring › Familjekonto): {{ t.transferred|money }}{% if (t.transferred - t.to_account)|abs >= 1 %} · difference {{ (t.transferred - t.to_account)|money }}{% endif %}</p>{% endif %}
       </fieldset>
@@ -74,28 +77,36 @@
   <h2>{{ year }}</h2>
   <div class="table-wrap">
   <table class="transfer-year">
-    <thead><tr><th>Month</th>{% for p in people %}<th class="num">{{ p.name }}</th>{% endfor %}{% if people|length > 1 %}<th class="num">Together</th>{% endif %}</tr></thead>
+    <thead><tr><th>Month</th><th class="num">Allowance</th>{% for p in people %}<th class="num">{{ p.name }}</th>{% endfor %}{% if people|length > 1 %}<th class="num">Together</th>{% endif %}</tr></thead>
     <tbody>
-      {% for m in range(1, 13) %}
+      {% for m in range(1, 13) %}{% set a, a_set = allowances[m - 1] %}
       <tr {% if m == month %}class="current"{% endif %}>
         <th scope="row"><a href="{{ url_for('transfers', account_id=account.id, year=year, month=m) }}" aria-label="{{ month_names[m - 1] }}">{{ months[m - 1] }}</a></th>
+        <td class="num">{% if a_set %}{{ a|money }}{% else %}<span class="muted">{{ a|money }}</span>{% endif %}</td>
         {% for p in people %}{% set t = by_person[p.id][m - 1] %}<td class="num">{% if t.has_data %}{{ amount(t.to_account) }}{% endif %}</td>{% endfor %}
         {% if people|length > 1 %}<td class="num"><strong>{% if has_data[m - 1] %}{{ amount(totals[m - 1]) }}{% endif %}</strong></td>{% endif %}
       </tr>
       {% endfor %}
     </tbody>
-    <tfoot><tr><th scope="row">Total</th>
+    <tfoot><tr><th scope="row">Total</th><td></td>
       {% for p in people %}<td class="num">{{ amount(by_person[p.id]|selectattr('has_data')|sum(attribute='to_account')) }}</td>{% endfor %}
       {% if people|length > 1 %}<td class="num"><strong>{{ amount(totals|sum) }}</strong></td>{% endif %}
     </tr></tfoot>
   </table>
   </div>
+  <p class="hint">Grey allowance: the default.</p>
 </section>
 {% endif %}
 
 <details class="card fold" {% if not people %}open{% endif %}>
-  <summary><h2>People</h2></summary>
-  {% if not people %}<p>Add the people who transfer money to {{ account.name }}. Link a person to their own account in the app to fill in their income and outlays from it.</p>{% endif %}
+  <summary><h2>Settings and people</h2></summary>
+  <form method="post" action="{{ url_for('set_default_allowance', account_id=account.id, year=year, month=month) }}" class="row-form default-form">
+    <label for="default-allowance">Default allowance</label>
+    <input type="text" inputmode="decimal" id="default-allowance" name="default" value="{{ default|amount_input }}" required>
+    <button type="submit" class="secondary">Save</button>
+  </form>
+  <p class="hint">Used for every month that doesn’t have its own allowance.</p>
+  {% if not people %}<p>Add the people who transfer money to {{ account.name }}.</p>{% endif %}
   {% for p in people %}
   <form method="post" action="{{ url_for('update_person', account_id=account.id, person_id=p.id, year=year, month=month) }}" class="row-form person-form">
     <input type="text" name="name" value="{{ p.name }}" aria-label="Name" required>
@@ -110,7 +121,7 @@
     {{ link_select() }}
     <button type="submit">Add</button>
   </form>
-  {% if link_choices %}<p class="hint">With an own account, empty fields use its Bokföring › Inkomst for the month and its Bokföring › Familjeutlägg of the month before, as its calculated Månadspeng does.</p>{% endif %}
+  {% if link_choices %}<p class="hint">With an own account, an empty income is its Bokföring › Inkomst for the month, and its debt (Bokföring › Familjeutlägg) is added to the shared expenses the month after.</p>{% endif %}
 </details>
 
 {% if people %}
@@ -131,19 +142,22 @@
     input.setCustomValidity(isNaN(v) ? "Not an amount" : "");
     return v;
   }
+  function format(v) { return isNaN(v) ? "?" : money.format(Math.round(v)).replace("-", "−"); }
   function show(el, v) {
     el.innerHTML = "";
     var span = document.createElement("span");
     span.className = "amount" + (v < 0 ? " neg" : v > 0 ? " pos" : "");
-    span.textContent = isNaN(v) ? "?" : money.format(Math.round(v)).replace("-", "−");
+    span.textContent = format(v);
     el.appendChild(span);
   }
   function update() {
-    var total = 0;
+    var total = 0, allowance = value(form.elements.allowance);
     form.querySelectorAll("[data-person]").forEach(function (p) {
       var id = p.dataset.person;
-      var v = value(form.elements["income_" + id]) - value(form.elements["costs_" + id])
-              - value(form.elements["allowance_" + id]);
+      var costs = value(form.elements["costs_" + id]) + Number(p.dataset.debt);
+      var costsEl = p.querySelector("[data-costs]");
+      if (costsEl) costsEl.textContent = format(costs);
+      var v = value(form.elements["income_" + id]) - costs - allowance;
       show(p.querySelector("[data-result]"), v);
       total += v;
     });

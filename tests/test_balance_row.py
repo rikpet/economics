@@ -141,7 +141,7 @@ def test_sensor_and_cli(path):
     add(path, '2025-03-11', 500, 'inkomst', 'ränta')
     add(path, '2025-02-11', 100, 'inkomst', 'ränta')
     sensor = account_states(path, db.get_account(path, 1), now=datetime(2025, 3, 15))[
-        'sensor.economics_privat_balance']
+        'sensor.economics_rikard_balance']
     assert sensor['state'] == -700
     assert sensor['attributes']['previous_month'] == 100
     assert sensor['attributes']['year_to_date'] == -600

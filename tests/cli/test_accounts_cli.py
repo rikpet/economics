@@ -8,11 +8,13 @@ def test_accounts_from_the_command_line(tmp_path):
     path = str(tmp_path / 'cli.db')
     runner = CliRunner()
 
-    result = runner.invoke(cli, ['--db', path, 'account', 'add', 'Familj', '--template', 'family'])
-    assert result.exit_code == 0, result.output
+    db.create_tables(path)
+    db.create_account(path, 'Familj', 'family')
+    # Accounts can't be added from the command line any more.
+    assert runner.invoke(cli, ['--db', path, 'account', 'add', 'Other']).exit_code != 0
 
     result = runner.invoke(cli, ['--db', path, 'account', 'list'])
-    assert 'Privat' in result.output and 'Familj' in result.output
+    assert 'Rikard' in result.output and 'Familj' in result.output
 
     result = runner.invoke(cli, ['--db', path, '--account', 'Familj', 'trans', 'add',
                                  'tests/input_data/seb_transactions.csv', 'SEB'])

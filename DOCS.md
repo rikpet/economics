@@ -1,7 +1,7 @@
 # Economics add-on
 
-Import bank files, classify transactions and follow the budget for several accounts (e.g.
-*Familj* and *Privat*), straight from the Home Assistant sidebar.
+Import bank files, classify transactions and follow the budget for the household's two
+accounts, *Familj* and *Rikard*, straight from the Home Assistant sidebar.
 
 ## Installation
 
@@ -22,13 +22,15 @@ Either:
   the `econ` command line can keep using it (`ECONOMICS_DB=\\homeassistant\share\economics\transactions.db`).
   Do not write to it from the PC while the add-on is writing.
 
-An older database is upgraded on first use, and all its data is put in the account **Privat**.
+An older database is upgraded on first use, and all its data is put in the private account
+**Rikard**.
 
 ## Accounts
 
-Create a family account under **Accounts → New account** and pick the *family* category
-template. Each account has its own transactions, issuer rules and categories, which can be edited
-under **Categories**. Switch account with the selector at the top.
+There are two accounts: **Familj** for the joint economy and **Rikard** for the private one.
+Each has its own transactions, issuer rules and categories, which can be edited under
+**Categories**. Switch account with the selector at the top. Accounts can be renamed under
+**Accounts**, but not added or removed.
 
 ## Working with transactions
 
@@ -85,34 +87,33 @@ Bokföring or internal transfers: a whole group with *Hide from budget*, or a si
 sub-category by unticking *Show*. Hidden categories keep their transactions but are left
 out of the budget, the charts and the sensors.
 
-## Transfers
+## Allowance
 
-**Transfers** calculates what each person should transfer to an account, typically the
-family's joint account, per month:
+**Allowance** works out how much each of you transfers to the joint account (Familj) every
+month:
 
-> to the account = income − one-off costs − allowance
+> to Familj = income − shared expenses − allowance
 
-- *Income* is what the person got paid that month.
-- *One-off costs* are what they paid for the joint account with their own money, so they
-  transfer that much less.
-- The *allowance* is what they keep. It applies from the month it is entered until it is
-  changed, so it only needs to be entered when it changes.
+- *Income* is the salary that month.
+- *Shared expenses* are what you paid for the household with your own money, so you
+  transfer that much less. Several amounts can be added up as in a spreadsheet:
+  `=100+250+75`.
+- The *allowance* is what each of you keeps on the private account. It is 12 000 kr unless
+  a month has its own; the default can be changed under *Settings and people*.
 - Pension savings are not part of the calculation.
 
-Add the people under *People* at the bottom of the page. Then pick a month, fill in each
-person's figures and press **Save**. The result updates while you type. Fields accept sums
-as in a spreadsheet, e.g. `=100+250+75` or `50000-8000`, and keep what you typed. A
-negative result means the joint account should pay that person, e.g. during parental
-leave. Below the form the year shows each person's amount per month.
+Pick a month, fill in the figures and press **Save**; the result updates while you type.
+A negative result means Familj should pay that person, e.g. during parental leave. The
+table below shows every month of the year.
 
-A person can be linked to their own account in the app (*Figures from Privat*). Fields left
-empty then use that account's figures, the same ones its calculated Månadspeng uses:
-Bokföring › Inkomst of the month as income, and Bokföring › Familjeutlägg of the month
-before as one-off costs. What was actually transferred (Bokföring › Familjekonto) is shown
-next to the result, with the difference.
+Rikard is linked to the account Rikard: an empty income is that account's
+Bokföring › Inkomst for the month, and its debt — Bokföring › Familjeutlägg, what was
+paid for the family — is added to the shared expenses the month after. What was actually
+transferred (Bokföring › Familjekonto) is shown next to the result.
 
-From the command line: `econ -a Familj transfer show --year 2026` and
-`econ -a Familj transfer set Kim 3 --income 40000 --costs 700+500 --allowance 10000`.
+From the command line: `econ transfer show --year 2026`,
+`econ transfer set Sara 3 --income 40000 --costs 700+500` and
+`econ transfer allowance 10000 --month 3` (or `--default`).
 
 ## Sensors
 
@@ -127,7 +128,7 @@ and `<category>` are lower-case, with å/ä/ö written as a/a/o):
 | `sensor.economics_<account>_debt_check` | Number of finished months this year where a *0 monthly* category is not 0 and not acknowledged | `not_zero` (category, month, amount), `acknowledged` |
 | `sensor.economics_<account>_unclassified` | Number of unclassified transactions | |
 | `sensor.economics_<account>_latest_transaction` | Date of the latest transaction | |
-| `sensor.economics_<account>_transfer_<person>` | This month's amount the person transfers (Transfers page); `unknown` before anything is entered | `income`, `one_off_costs`, `allowance`, `previous_month`, `transferred` (with an own account) |
+| `sensor.economics_familj_transfer_<person>` | This month's amount the person transfers (Allowance page); `unknown` before anything is entered | `income`, `shared_expenses`, `allowance`, `previous_month`, `debt_from_previous_month` and `transferred` (Rikard) |
 
 They are refreshed every `sensor_interval` minutes and after each change in the web interface.
 Home Assistant does not keep these states over a restart; the add-on publishes them again

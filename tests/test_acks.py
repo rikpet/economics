@@ -94,7 +94,7 @@ def test_sensor_counts_open_warnings_only(path):
     outlay(path, '2025-02-10', -100)
     db.acknowledge_zero_check(path, 1, 'bokföring', 'utlägg/skuld', 2025, 1, 650)
     check = account_states(path, db.get_account(path, 1), now=datetime(2025, 3, 15))[
-        'sensor.economics_privat_debt_check']
+        'sensor.economics_rikard_debt_check']
     assert check['state'] == 1
     assert check['attributes']['acknowledged'] == 1
     assert [x['month'] for x in check['attributes']['not_zero']] == ['2025-02']

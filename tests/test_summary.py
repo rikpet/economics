@@ -55,7 +55,7 @@ def test_migration_sets_defaults_on_an_existing_database(tmp_path):
         CREATE TABLE c2 AS SELECT id, account_id, main_category, sub_category, invert_sign,
             position, hidden FROM categories;
         DROP TABLE categories; ALTER TABLE c2 RENAME TO categories;
-        DROP TABLE budgets; DROP TABLE zero_check_acks; DROP TABLE person_months; DROP TABLE people;
+        DROP TABLE budgets; DROP TABLE zero_check_acks; DROP TABLE allowance_months; DROP TABLE person_months; DROP TABLE people;
         PRAGMA user_version = 4;
     ''')
     conn.close()
@@ -152,13 +152,13 @@ def test_sensors(path):
     add(path, '2025-02-10', -300, 'bokföring', 'utlägg/skuld')
     states = account_states(path, db.get_account(path, 1), now=datetime(2025, 3, 15))
 
-    expenses = states['sensor.economics_privat_expenses']
+    expenses = states['sensor.economics_rikard_expenses']
     assert expenses['state'] == 1500
     assert expenses['attributes']['excl_fixed_costs'] == 500
     assert expenses['attributes']['previous_month'] == 200 + 300
     assert expenses['attributes']['year_to_date'] == 2000
 
-    check = states['sensor.economics_privat_debt_check']
+    check = states['sensor.economics_rikard_debt_check']
     assert check['state'] == 1
     assert check['attributes']['not_zero'] == [
         {'category': 'bokföring/utlägg/skuld', 'month': '2025-02', 'amount': 300}]

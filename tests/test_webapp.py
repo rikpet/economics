@@ -124,7 +124,10 @@ def test_edit_transaction(client, path):
 
 
 def test_category_and_account_management(client, path):
-    client.post('/accounts', data={'name': 'Familj', 'template': 'family'})
+    # Accounts can't be created or deleted in the web UI.
+    assert client.post('/accounts', data={'name': 'Familj', 'template': 'family'}).status_code == 405
+    assert 'New account' not in client.get('/accounts').get_data(as_text=True)
+    db.create_account(path, 'Familj', 'family')
     family = db.find_account(path, 'Familj')
     assert family is not None and family.derive_allowance is False
 
@@ -136,7 +139,7 @@ def test_category_and_account_management(client, path):
     assert family.name == 'Familjen' and family.derive_allowance
 
     client.post(f'/accounts/{family.id}', data={'action': 'delete'})
-    assert db.get_account(path, family.id) is None
+    assert db.get_account(path, family.id) is not None
 
 
 def test_backup_and_restore_legacy_database(client, path, tmp_path):
@@ -162,7 +165,7 @@ def test_backup_and_restore_legacy_database(client, path, tmp_path):
     client.post('/restore', data={'file': (io.BytesIO(legacy.read_bytes()), 'legacy.db'),
                                   'confirm': '1'}, content_type='multipart/form-data')
     assert [t.issuer for t in db.get_transactions(path, 1)] == ['OLD']
-    assert db.get_accounts(path)[0].name == 'Privat'
+    assert db.get_accounts(path)[0].name == 'Rikard'
 
 
 def test_cookies_are_scoped_to_the_ingress_path(client):

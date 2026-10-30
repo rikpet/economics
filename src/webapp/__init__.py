@@ -39,8 +39,14 @@ from budget import (
     summary_rows,
     zero_check_flags,
 )
-from category_templates import KINDS, TEMPLATES
-from transfers import parse_sum, transfer_year
+from category_templates import KINDS
+from transfers import (
+    ALLOWANCE_SETTING,
+    default_allowance,
+    month_allowances,
+    parse_sum,
+    transfer_year,
+)
 from utils import month_to_date
 
 ACCOUNT_COOKIE = "economics_account"
@@ -192,11 +198,19 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
     def year_options(account_id: int) -> list[int]:
         return sorted(set(db.get_years(dbp(), account_id)) | {datetime.now().year}, reverse=True)
 
+    def joint_account(accounts: list[Account]) -> Account | None:
+        """The account the allowance calculation belongs to: the one with people, else the
+        first one without a derived allowance (Familj)."""
+        return (next((a for a in accounts if db.get_people(dbp(), a.id)), None)
+                or next((a for a in accounts if not a.derive_allowance), None))
+
     @app.context_processor
     def inject():
+        accounts = db.get_accounts(dbp())
         return {
             "kind_labels": KIND_LABELS,
-            "accounts": db.get_accounts(dbp()),
+            "accounts": accounts,
+            "joint_account": joint_account(accounts) or g.get("account"),
             "account": g.get("account"),
             "months": MONTHS,
             "month_names": MONTH_NAMES,
@@ -585,9 +599,11 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
                       if by_person[p.id][m].has_data) for m in range(12)]
         has_data = [any(by_person[p.id][m].has_data for p in people) for m in range(12)]
         accounts = {a.id: a for a in db.get_accounts(dbp())}
+        allowances = month_allowances(dbp(), account_id, year)
         return render_template(
             "transfers.html", year=year, month=month, people=people, by_person=by_person,
             totals=totals, has_data=has_data, linked_names=accounts,
+            allowances=allowances, default=default_allowance(dbp(), account_id),
             month_total=sum(by_person[p.id][month - 1].to_account for p in people),
             link_choices=[a for a in accounts.values() if a.id != account_id],
             years=sorted({*year_options(account_id), year}, reverse=True),
@@ -599,29 +615,50 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
         year = request.form.get("year", type=int) or datetime.now().year
         month = min(max(request.form.get("month", type=int) or 1, 1), 12)
         values, errors = [], []
+        allowance_text = request.form.get("allowance", "").strip()
+        try:
+            allowance = parse_sum(allowance_text)
+        except ValueError:
+            errors.append(f"Allowance: “{allowance_text}” is not an amount.")
         for person in db.get_people(dbp(), account_id):
             fields = {}
-            for field in ("income", "costs", "allowance"):
+            for field in ("income", "costs"):
                 text = request.form.get(f"{field}_{person.id}", "").strip()
                 try:
                     fields[field] = (parse_sum(text), text or None)
                 except ValueError:
                     errors.append(f"{person.name}: “{text}” is not an amount.")
-            if len(fields) == 3:
+            if len(fields) == 2:
                 values.append(PersonMonth(
                     person.id, year, month,
                     income=fields["income"][0], income_input=fields["income"][1],
-                    costs=fields["costs"][0], costs_input=fields["costs"][1],
-                    allowance=fields["allowance"][0]))
+                    costs=fields["costs"][0], costs_input=fields["costs"][1]))
         if errors:
             for error in errors:
                 flash(error, "error")
             flash("Nothing was saved.", "error")
             return redirect(transfers_url(account_id, year, month))
+        db.set_allowance_month(dbp(), account_id, year, month, allowance)
         for value in values:
             db.set_person_month(dbp(), account_id, value)
         flash(f"Saved {MONTH_NAMES[month - 1]} {year}.", "ok")
         return redirect(transfers_url(account_id, year, month))
+
+    @app.post("/<int:account_id>/transfers/default")
+    def set_default_allowance(account_id: int):
+        load_account(account_id)
+        text = request.form.get("default", "").strip()
+        try:
+            amount = parse_sum(text)
+        except ValueError:
+            amount = None
+        if amount is None:
+            flash(f"“{text}” is not an amount.", "error")
+        else:
+            db.set_setting(dbp(), account_id, ALLOWANCE_SETTING, str(amount))
+            flash(f"The default allowance is now {format_money(amount)} kr.", "ok")
+        return redirect(url_for("transfers", account_id=account_id,
+                                year=request.args.get("year", ""), month=request.args.get("month", "")))
 
     @app.post("/<int:account_id>/transfers/people")
     def add_person(account_id: int):
@@ -871,32 +908,16 @@ def create_app(database_path: str, on_change: Callable[[], None] | None = None,
     @app.get("/accounts")
     def accounts():
         counts = {a.id: db.count_transactions(dbp(), a.id) for a in db.get_accounts(dbp())}
-        return render_template("accounts.html", counts=counts, templates=list(TEMPLATES),
+        return render_template("accounts.html", counts=counts,
                                db_path=dbp(), schema=db.schema_version(dbp()))
-
-    @app.post("/accounts")
-    def create_account():
-        try:
-            account_id = db.create_account(dbp(), request.form.get("name", ""),
-                                           request.form.get("template", "empty"),
-                                           bool(request.form.get("derive_allowance")))
-        except ValueError as e:
-            flash(str(e), "error")
-            return redirect(url_for("accounts"))
-        flash("Account created.", "ok")
-        return redirect(url_for("budget", account_id=account_id))
 
     @app.post("/accounts/<int:account_id>")
     def update_account(account_id: int):
         load_account(account_id)
         try:
-            if request.form.get("action") == "delete":
-                db.delete_account(dbp(), account_id)
-                flash("Account deleted.", "ok")
-            else:
-                db.update_account(dbp(), account_id, name=request.form.get("name"),
-                                  derive_allowance=bool(request.form.get("derive_allowance")))
-                flash("Account saved.", "ok")
+            db.update_account(dbp(), account_id, name=request.form.get("name"),
+                              derive_allowance=bool(request.form.get("derive_allowance")))
+            flash("Account saved.", "ok")
         except ValueError as e:
             flash(str(e), "error")
         return redirect(url_for("accounts"))

@@ -149,8 +149,8 @@ def test_sensor_attributes(path):
     db.set_budget(path, 1, 'inkomst', 1000)
     add(path, '2025-03-02', -3500, 'mat', 'butik')
     states = account_states(path, db.get_account(path, 1), now=datetime(2025, 3, 15))
-    mat = states['sensor.economics_privat_mat']['attributes']
+    mat = states['sensor.economics_rikard_mat']['attributes']
     assert (mat['budget'], mat['over_budget'], mat['budget_left']) == (3000, True, -500)
-    inkomst = states['sensor.economics_privat_inkomst']['attributes']
+    inkomst = states['sensor.economics_rikard_inkomst']['attributes']
     assert inkomst['budget'] == 1000 and 'over_budget' not in inkomst
-    assert 'budget' not in states['sensor.economics_privat_hushall']['attributes']
+    assert 'budget' not in states['sensor.economics_rikard_hushall']['attributes']

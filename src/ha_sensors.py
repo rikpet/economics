@@ -166,10 +166,12 @@ def account_states(database_path: str, account: Account, currency: str = "SEK",
                 "person": person.name,
                 "month": now.strftime("%Y-%m"),
                 "income": round(t.income, 2),
-                "one_off_costs": round(t.costs, 2),
+                "shared_expenses": round(t.costs, 2),
                 "allowance": round(t.allowance, 2),
                 "previous_month": round(p.to_account, 2) if p.has_data else None,
             }
+            if t.debt is not None:
+                attributes["debt_from_previous_month"] = round(t.debt, 2)
             if t.transferred is not None:
                 attributes["transferred"] = round(t.transferred, 2)
             states[f"{prefix}_transfer_{slugify(person.name)}"] = {

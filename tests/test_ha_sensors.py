@@ -29,28 +29,28 @@ def test_account_states(path):
 
     states = account_states(path, db.get_account(path, 1), now=datetime(2025, 3, 15))
 
-    mat = states['sensor.economics_privat_mat']
+    mat = states['sensor.economics_rikard_mat']
     assert mat['state'] == 250
     assert mat['attributes']['previous_month'] == 100
     assert mat['attributes']['year_to_date'] == 350
     assert mat['attributes']['sub_categories']['butik'] == 250
     assert mat['attributes']['unit_of_measurement'] == 'SEK'
-    assert 'sensor.economics_privat_hushall' in states
-    assert states['sensor.economics_privat_unclassified']['state'] == 1
-    assert states['sensor.economics_privat_latest_transaction']['state'] == '2025-03-03'
+    assert 'sensor.economics_rikard_hushall' in states
+    assert states['sensor.economics_rikard_unclassified']['state'] == 1
+    assert states['sensor.economics_rikard_latest_transaction']['state'] == '2025-03-03'
 
 
 def test_january_compares_with_previous_december(path):
     db.insert_transaction(path, 1, Transaction('2024-12-02', 'ICA', -70.0, 'SEB', 'mat', 'butik'))
     states = account_states(path, db.get_account(path, 1), now=datetime(2025, 1, 10))
-    assert states['sensor.economics_privat_mat']['attributes']['previous_month'] == 70
+    assert states['sensor.economics_rikard_mat']['attributes']['previous_month'] == 70
 
 
 def test_all_states_covers_every_account(path):
     db.create_account(path, 'Familj', 'family')
     states = all_states(path, currency='EUR')
     assert 'sensor.economics_familj_boende' in states
-    assert 'sensor.economics_privat_mat' in states
+    assert 'sensor.economics_rikard_mat' in states
     assert states['sensor.economics_familj_boende']['attributes']['unit_of_measurement'] == 'EUR'
 
 
@@ -75,7 +75,7 @@ def test_publish_posts_to_supervisor(path, monkeypatch):
     SensorPublisher(path, 'secret').publish()
 
     urls = [url for url, _, _ in sent]
-    assert 'http://supervisor/core/api/states/sensor.economics_privat_mat' in urls
+    assert 'http://supervisor/core/api/states/sensor.economics_rikard_mat' in urls
     assert all(auth == 'Bearer secret' for _, auth, _ in sent)
     assert all('state' in body and 'attributes' in body for _, _, body in sent)
 
@@ -88,6 +88,6 @@ def test_hidden_categories_are_not_published(path):
     db.set_category_hidden(path, 1, True, category_id=sbo.id)
 
     states = account_states(path, db.get_account(path, 1), now=datetime(2025, 3, 15))
-    assert 'sensor.economics_privat_bokforing' not in states
-    assert states['sensor.economics_privat_mat']['state'] == 250
-    assert 'systembolaget' not in states['sensor.economics_privat_mat']['attributes']['sub_categories']
+    assert 'sensor.economics_rikard_bokforing' not in states
+    assert states['sensor.economics_rikard_mat']['state'] == 250
+    assert 'systembolaget' not in states['sensor.economics_rikard_mat']['attributes']['sub_categories']

@@ -491,3 +491,18 @@ details.card[open] > summary { margin-bottom: .8rem; }
   .person-form > input[name="name"] { grid-column: 1 / -1; }
   .person-form > select { min-width: 0; }
 }
+.allowance-field { display: grid; gap: .25rem; max-width: 22rem; margin-bottom: 1rem; font-weight: 600; }
+.allowance-field .field-hint { font-weight: 400; }
+.debt-line { margin: 0; font-size: .9rem; color: var(--muted); }
+.debt-line strong { color: var(--text); }
+.person-form > label[for] { align-self: center; }
+.default-form { margin-bottom: .2rem; }
+.default-form > input { max-width: 10rem; }
+@media (max-width: 640px) {
+  .default-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .4rem; }
+  .default-form > label { grid-column: 1 / -1; }
+  .default-form > input { max-width: none; }
+}
+@media (max-width: 640px) {
+  table.transfer-year thead th { overflow-wrap: normal; font-size: .75rem; }
+}
